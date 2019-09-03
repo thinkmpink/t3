@@ -1,6 +1,9 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Game ()
+module Game ( GameState
+            , Game
+            )
 
 where
 
@@ -8,14 +11,19 @@ import Control.Monad.State ( State )
 import Control.Zipper ( (:>>), Top )
 import Data.Vector ( MVector )
 
-newtype GameState = State Game
+newtype GameState a = GS (State Game a)
+  deriving ( Functor, Applicative, Monad )
 
 data Game = Game { stage :: Stage
                  , players :: [Player]
                  , lattice :: Top :>> Lattice :>> Tac
                  }
 
-data Stage = Start | Continue | End deriving ( Show, Eq, Ord )
+-- addPlayer :: String -> Char -> GameState Player
+-- addPlayer g nm mk = undefined
+
+data Stage = Start | Continue | End
+  deriving ( Show, Eq, Ord )
 
 -- | The board on which the game is played.
 newtype Lattice = MVector Tac
