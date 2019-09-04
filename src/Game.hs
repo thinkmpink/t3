@@ -20,7 +20,9 @@ module Game ( GameState
 
 where
 
-import Control.Monad.State ( State, get, put, runState, execState, evalState )
+import Control.Monad.State ( State, StateT, get, put, runState, execState, evalState )
+import System.IO ( IO )
+import Control.Monad.Except ( ExceptT )
 -- import Control.Zipper ( (:>>), Top )
 import Data.Set ( fromList )
 import Data.List ( intercalate, intersperse )
@@ -29,24 +31,24 @@ import qualified Data.Vector as V
 
 
 
-newtype GameState a = GS (State Game a)
+newtype Game a = GS (State GameState a)
   deriving ( Functor, Applicative, Monad )
 
-data Game = Game { stage :: Stage
+data GameState = GameState { stage :: Stage
                  , players :: [Player]
                  , lattice :: Lattice
                  -- , lattice :: Top :>> Lattice :>> Tac
                  }
-instance Show Game where
+instance Show GameState where
   show game = "Game\nStage = " ++ show (stage game)
     ++ "\nPlayers = "++ show (players game)
     ++ "\nBoard = \n"++ show (lattice game)
 
 
-defaultGame :: Game
-defaultGame = Game Start [] (newLattice 3)
+defaultGame :: GameState
+defaultGame = GameState Start [] (newLattice 3)
 
-newGame :: Int -> [(String, Char)] -> Either String (GameState ())
+newGame :: Int -> [(String, Char)] -> Either String (Game ())
 newGame dim ps
   | dim < 1
       = Left ("Invalid lattice size: " ++ (show dim)
@@ -57,11 +59,11 @@ newGame dim ps
       = Left ("Duplicated marks found. All players must have unique marks.")
   | otherwise = let starters = map (\(n, m) -> Player n m) ps
                     l = newLattice dim
-                    game = Game Start starters l
+                    game = GameState Start starters l
                 in Right $ GS $ put game
 
 
-addPlayer :: GameState a -> String -> Char -> GameState (Either String Player)
+addPlayer :: Game a -> String -> Char -> Game (Either String Player)
 addPlayer gs nm mk = GS $ get >>= \game ->
   let p   = Player nm mk
       ps  = players game
