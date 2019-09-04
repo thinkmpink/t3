@@ -26,6 +26,9 @@ import Data.Set ( fromList )
 import Data.List ( intercalate, intersperse )
 import qualified Data.Vector as V
 
+
+
+
 newtype GameState a = GS (State Game a)
   deriving ( Functor, Applicative, Monad )
 
@@ -34,6 +37,11 @@ data Game = Game { stage :: Stage
                  , lattice :: Lattice
                  -- , lattice :: Top :>> Lattice :>> Tac
                  }
+instance Show Game where
+  show game = "Game\nStage = " ++ show (stage game)
+    ++ "\nPlayers = "++ show (players game)
+    ++ "\nBoard = \n"++ show (lattice game)
+
 
 defaultGame :: Game
 defaultGame = Game Start [] (newLattice 3)
@@ -99,7 +107,7 @@ newLattice n = Lattice $ V.replicate (n ^ 2) Nothing
 -- 'Lattice' via a Move or it is blank.
 type Tac = Maybe Move
 
--- | Gets the Mark at a move or ' '
+-- | Gets the Mark at a 'Move' or ' '
 getTacMark :: Tac -> Char
 getTacMark = maybe ' ' (mark . player)
 
