@@ -21,10 +21,10 @@ description:         Please see the README on GitHub at <https://github.com/thin
 
 dependencies:
 - base >= 4.7 && < 5
-- zippers >= 0.3
 - containers >= 0.6
 - vector >= 0.12
 - mtl >= 2.2
+- text >= 1.2
 
 library:
   source-dirs: src
