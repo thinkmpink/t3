@@ -9,20 +9,20 @@ module Game ( Game
             , LatticeCoordinate(..)
             , toVCoordinate
             , defaultGame
+            , winner
             )
 
 where
 
-import Control.Monad.Except     (ExceptT, runExceptT, throwError)
-import Control.Monad.IO.Class   (MonadIO, liftIO)
-import Control.Monad.Reader     (ReaderT, runReaderT, ask)
-import Control.Monad.State      (StateT, get, put, runState, gets, modify,
-                                runStateT)
+import Control.Monad.Except     (ExceptT, runExceptT)
+import Control.Monad.IO.Class   (MonadIO)
+import Control.Monad.Reader     (ReaderT, runReaderT)
+import Control.Monad.State      (StateT, runStateT)
 import Data.List                (find, intercalate, intersperse )
-import Data.Set                 (fromList)
-import qualified Data.Text as T
+-- import Data.Set                 (fromList)
+-- import qualified Data.Text as T
 import qualified Data.Vector as V
-import System.IO                (IO, putStr, putStrLn, getLine)
+import System.IO                (IO)
 
 
 newtype Game a = G {
@@ -34,9 +34,9 @@ data GameState = Start Lattice
                | Done Lattice [PlayerResult]
 
 runGame :: Game a -> Int -> IO (Either GameException a, GameState)
-runGame g dim =
-  let state = defaultGame dim
-      config = defaultConfig dim
+runGame g dimension =
+  let state = defaultGame dimension
+      config = defaultConfig dimension
   in runReaderT (runStateT (runExceptT (runG g)) state) config
 
 instance Show GameState where
@@ -113,7 +113,7 @@ data GameConfig = GameConfig {
 } deriving (Eq, Show)
 
 defaultConfig :: Int -> GameConfig
-defaultConfig dim = GameConfig [] dim
+defaultConfig dimension = GameConfig [] dimension
 
 type VCoord = Int
 type UCoord = (Int, Int)
@@ -123,21 +123,21 @@ data LatticeCoordinate = UserCoordinate UCoord
                        deriving (Eq, Show)
 
 toVCoordinate :: Int -> LatticeCoordinate -> VCoord
-toVCoordinate dim (UserCoordinate (x, y)) = (y - 1) * dim + (x - 1)
-toVCoordinate dim (VectorCoordinate v) = v
+toVCoordinate _ (VectorCoordinate v) = v
+toVCoordinate dimension (UserCoordinate (x, y)) = (y - 1) * dimension + (x - 1)
 
 toUserCoordinate :: Int -> LatticeCoordinate -> UCoord
-toUserCoordinate dim (UserCoordinate u) = u
-toUserCoordinate dim (VectorCoordinate v) =
-  let x = v `div` dim + 1
-      y = v `mod` dim + 1
+toUserCoordinate _ (UserCoordinate u) = u
+toUserCoordinate dimension (VectorCoordinate v) =
+  let x = v `div` dimension + 1
+      y = v `mod` dimension + 1
   in (x, y)
 
 showBounds :: Lattice -> String
 showBounds l =
-  let dim = width l
-  in "(1 <= number of columns <= " ++ (show dim)
-     ++ ", 1 <= number of rows <= " ++ (show dim) ++ ")"
+  let dimension = width l
+  in "(1 <= number of columns <= " ++ (show dimension)
+     ++ ", 1 <= number of rows <= " ++ (show dimension) ++ ")"
 
 -- | The board on which the game is played.
 -- For a 2x2 board with 2 players (E and M) this might look like:
@@ -217,8 +217,8 @@ instance Eq Player where
 
 
   -- newGame :: Int -> [(String, Char)] -> Game GameState
-  -- newGame dim ps
-  --   | dim < 1
+  -- newGame dimension ps
+  --   | dimension < 1
   --       = Left ("Invalid lattice size: " ++ (show dim)
   --                       ++ ". Board must be at least size 1.")
   --   | let marks  = map snd ps
