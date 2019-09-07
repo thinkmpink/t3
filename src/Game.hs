@@ -4,6 +4,7 @@
 
 module Game ( Game
             , runGame
+            , welcomeToT3
             , GameState(..)
             , GameConfig
             , LatticeCoordinate(..)
@@ -46,15 +47,21 @@ instance Show GameState where
   show (Done l rs)  = "Game over! " ++ (showResults rs)
                       ++ "\nThe final board:\n" ++ (prettyLattice l)
 
+defaultGame :: Int -> GameState
+defaultGame = Start . newLattice
+
 welcomeToT3 :: Game ()
 welcomeToT3 = liftIO (putStrLn welcomeMessage) >>
               liftIO getLine >>= return callUserAPI
 
 welcomeMessage :: String
 welcomeMessage = "Welcome to T3: Tic Tac Toe in Haskell!\n"
-                  ++ "Type an action to get started.\n"
-                  ++ "Here are the actions supported right now:\n"
-                  ++ (show userActions)
+                 ++ actionMessage
+
+actionMessage :: String
+actionMessage = "Type an action to get started.\n"
+                ++ "Here are the actions supported right now:\n"
+                ++ (show userActions)
 
 callUserAPI :: Game ()
 callUserAPI =  undefined
@@ -69,10 +76,16 @@ instance Show (Method a) where
   show (Method s _) = s
 
 userActions ::[UserAPI]
-userActions = []
+userActions = [ PlayerAPI (Method "addPlayer" addPlayer)
+              , GameStateAPI (Method "takeSpot" takeSpot)
+              ]
 
-defaultGame :: Int -> GameState
-defaultGame = Start . newLattice
+addPlayer :: Game Player
+addPlayer = undefined
+
+takeSpot :: Game GameState
+takeSpot = undefined
+
 
 type PlayerResult = (Player, Result)
 
@@ -176,8 +189,6 @@ newtype Lattice = Lattice { vec :: V.Vector Tac } deriving (Eq, Show)
 -- addTac :: Tac -> Coordinate -> Lattice -> Lattice
 -- addTac tac coord lattice =
   -- let i = toVCoordinate coord
-
-
 
 prettyLattice :: Lattice -> String
 prettyLattice lattice =
