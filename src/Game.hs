@@ -15,7 +15,7 @@ module Game ( Game
 where
 
 import Control.Monad.Except     (ExceptT, runExceptT)
-import Control.Monad.IO.Class   (MonadIO)
+import Control.Monad.IO.Class   (MonadIO, liftIO)
 import Control.Monad.Reader     (ReaderT, runReaderT)
 import Control.Monad.State      (StateT, runStateT)
 import Data.List                (find, intercalate, intersperse )
@@ -45,6 +45,31 @@ instance Show GameState where
                       ++ (prettyLattice l)
   show (Done l rs)  = "Game over! " ++ (showResults rs)
                       ++ "\nThe final board:\n" ++ (prettyLattice l)
+
+welcomeToT3 :: Game ()
+welcomeToT3 = liftIO (putStrLn welcomeMessage) >>
+              liftIO getLine >>= return callUserAPI
+
+welcomeMessage :: String
+welcomeMessage = "Welcome to T3: Tic Tac Toe in Haskell!\n"
+                  ++ "Type an action to get started.\n"
+                  ++ "Here are the actions supported right now:\n"
+                  ++ (show userActions)
+
+callUserAPI :: Game ()
+callUserAPI =  undefined
+
+data UserAPI = PlayerAPI (Method Player)
+             | GameStateAPI (Method GameState)
+             deriving (Show)
+
+data Method a = Method String (Game a)
+
+instance Show (Method a) where
+  show (Method s _) = s
+
+userActions ::[UserAPI]
+userActions = []
 
 defaultGame :: Int -> GameState
 defaultGame = Start . newLattice
