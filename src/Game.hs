@@ -6,7 +6,7 @@ module Game ( Game
             , GameState(..)
             , GameConfig
             , LatticeCoordinate(..)
-            , fromCoordinate
+            , toVCoordinate
             , defaultGame
             )
 
@@ -60,17 +60,50 @@ showResult (p, Lose) = (userName p) ++ " lost."
 winner :: [PlayerResult] -> Maybe Player
 winner rs = find (\(_, r) -> r == Win) rs >>= return . fst
 
-data Result = Win | Lose | Tie deriving (Eq, Show)
+data Result = Win | Lose | Tie
+  deriving (Eq, Show)
 
-data GameException = DuplicatePlayer Player
-                   | NotEnoughPlayers [Player]
-                   | CoordinateOutOfBounds LatticeCoordinate Lattice
-                   | CoordinateOccupied LatticeCoordinate Lattice Player Player
-                   | InvalidDim Int
-                   | MarkTooShort String
-                   | NameTooShort UserName
-                   | MarkTooLong String
+data GameException =
+    DuplicatePlayer Player [Player]
+  | NotEnoughPlayers [Player]
+  | CoordinateOutOfBounds LatticeCoordinate Lattice
+  | CoordinateOccupied LatticeCoordinate Lattice Player Player
+  | InvalidDim Int
+  | MarkTooShort String
+  | NameTooShort UserName
+  | MarkTooLong String
+  deriving (Eq)
 
+instance Show GameException where
+  show (DuplicatePlayer p ps) =
+    "Player " ++ (userName p) ++ " is duplicated.\n"
+    ++ "Here are the current players in the game:\n"
+    ++ (show ps)
+  show (NotEnoughPlayers ps) =
+    "There are not enough players to play the game."
+    ++ "\nConsider adding players. Here are the "
+    ++ "current players:\n" ++ (show ps)
+  show (CoordinateOutOfBounds c l) =
+    "Coordinate entered is out of the bounds of the "
+    ++ "game: " ++ (show c) ++ ".\nChoose a "
+    ++ "coordinate within " ++ (showBounds l)
+  show (CoordinateOccupied c l owner attemptor) =
+    "Request by " ++ (userName attemptor)
+    ++ " to claim board spot " ++ (show $ toUserCoordinate (width l) c)
+    ++ " is not permitted.\nThis spot is already taken"
+    ++ " by " ++ (userName owner) ++ "."
+  show (InvalidDim d) =
+    "Unable to create board for dimension " ++ (show d)
+    ++ ".\nPick a dimension greater than 1."
+  show (MarkTooShort s) =
+    "Mark '" ++ s ++ "' is too short. Pick a mark exactly"
+    ++ " one character long."
+  show (NameTooShort u) =
+    "Name '" ++ u ++ "' is too short. Pick a name at least"
+    ++ " one letter long."
+  show (MarkTooLong m) =
+    "Mark '" ++ m ++ "' is too long. Pick a mark exactly"
+    ++ " one character long."
 
 data GameConfig = GameConfig {
     players :: [Player]
@@ -81,13 +114,25 @@ type VCoord = Int
 type UCoord = (Int, Int)
 
 data LatticeCoordinate = UserCoordinate UCoord
-                       | VectorCoordinate VCoord deriving (Eq, Show)
+                       | VectorCoordinate VCoord
+                       deriving (Eq, Show)
 
--- 3 (2, 2) -> 4
--- 3 (1, 1) -> 0
-fromCoordinate :: Int -> LatticeCoordinate -> VCoord
-fromCoordinate dim (UserCoordinate (x, y)) = (y - 1) * dim + (x - 1)
-fromCoordinate dim (VectorCoordinate v) = v
+toVCoordinate :: Int -> LatticeCoordinate -> VCoord
+toVCoordinate dim (UserCoordinate (x, y)) = (y - 1) * dim + (x - 1)
+toVCoordinate dim (VectorCoordinate v) = v
+
+toUserCoordinate :: Int -> LatticeCoordinate -> UCoord
+toUserCoordinate dim (UserCoordinate u) = u
+toUserCoordinate dim (VectorCoordinate v) =
+  let x = v `div` dim + 1
+      y = v `mod` dim + 1
+  in (x, y)
+
+showBounds :: Lattice -> String
+showBounds l =
+  let dim = width l
+  in "(1 <= number of columns <= " ++ (show dim)
+     ++ ", 1 <= number of rows <= " ++ (show dim) ++ ")"
 
 -- | The board on which the game is played.
 -- For a 2x2 board with 2 players (E and M) this might look like:
@@ -100,7 +145,7 @@ newtype Lattice = Lattice { vec :: V.Vector Tac } deriving (Eq, Show)
 
 -- addTac :: Tac -> Coordinate -> Lattice -> Lattice
 -- addTac tac coord lattice =
-  -- let i = fromCoordinate coord
+  -- let i = toVCoordinate coord
 
 
 
