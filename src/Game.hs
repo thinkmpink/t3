@@ -3,6 +3,7 @@
 {-# LANGUAGE TypeOperators #-}
 
 module Game ( Game
+            , runGame
             , GameState(..)
             , GameConfig
             , LatticeCoordinate(..)
@@ -32,10 +33,11 @@ data GameState = Start Lattice
                | Turn Lattice Player
                | Done Lattice [PlayerResult]
 
--- runGame :: Game a -> Int -> IO (a, GameState)
--- runGame g dim =
---   let state = defaultGame dim
---   in runStateT (runExceptT (runG g)) state
+runGame :: Game a -> Int -> IO (Either GameException a, GameState)
+runGame g dim =
+  let state = defaultGame dim
+      config = defaultConfig dim
+  in runReaderT (runStateT (runExceptT (runG g)) state) config
 
 instance Show GameState where
   show (Start l)    = "Beginning of game.\n" ++ (prettyLattice l)
@@ -109,6 +111,9 @@ data GameConfig = GameConfig {
     players :: [Player]
   , dim :: Int
 } deriving (Eq, Show)
+
+defaultConfig :: Int -> GameConfig
+defaultConfig dim = GameConfig [] dim
 
 type VCoord = Int
 type UCoord = (Int, Int)
