@@ -1,158 +1,287 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeOperators #-}
+module Game
+    ( route
+    , respond
+    , startGame
+    ) where
 
-module Game ( Game
-            , runGame
-            , welcomeToT3
-            , GameState(..)
-            , GameConfig
-            , LatticeCoordinate(..)
-            , toVCoordinate
-            , defaultGame
-            , winner
-            )
-
-where
-
-import Control.Monad.Except     (ExceptT, runExceptT)
-import Control.Monad.IO.Class   (MonadIO, liftIO)
-import Control.Monad.Reader     (ReaderT, runReaderT)
-import Control.Monad.State      (StateT, runStateT)
-import Data.List                (find, intercalate, intersperse )
--- import Data.Set                 (fromList)
--- import qualified Data.Text as T
+import Data.List                (intercalate, intersperse, uncons)
+import Data.Maybe               (fromMaybe)
+import Text.Read                (readMaybe)
+import qualified Data.Text as T
 import qualified Data.Vector as V
-import System.IO                (IO)
 
 
-newtype Game a = G {
-    runG :: ExceptT GameException (StateT GameState (ReaderT GameConfig IO)) a
-  } deriving ( Functor, Applicative, Monad, MonadIO )
 
-data GameState = Start Lattice
-               | Turn Lattice Player
-               | Done Lattice [PlayerResult]
+type Request = String
+type Response = String
+type GameInteraction = (GameState, Response)
+type Param = String
 
-runGame :: Game a -> Int -> IO (Either GameException a, GameState)
-runGame g dimension =
-  let state = defaultGame dimension
-      config = defaultConfig dimension
-  in runReaderT (runStateT (runExceptT (runG g)) state) config
+route :: GameInteraction -> Request -> GameInteraction
+route i r = routeReq i (parseReqParams . sanitize $ r)
 
-instance Show GameState where
-  show (Start l)    = "Beginning of game.\n" ++ (prettyLattice l)
-  show (Turn l p)   = "It's " ++ (userName p) ++ "'s turn.\n"
-                      ++ (prettyLattice l)
-  show (Done l rs)  = "Game over! " ++ (showResults rs)
-                      ++ "\nThe final board:\n" ++ (prettyLattice l)
-
-defaultGame :: Int -> GameState
-defaultGame = Start . newLattice
-
-welcomeToT3 :: Game ()
-welcomeToT3 = liftIO (putStrLn welcomeMessage) >>
-              liftIO getLine >>= return callUserAPI
-
-welcomeMessage :: String
-welcomeMessage = "Welcome to T3: Tic Tac Toe in Haskell!\n"
-                 ++ actionMessage
-
-actionMessage :: String
-actionMessage = "Type an action to get started.\n"
-                ++ "Here are the actions supported right now:\n"
-                ++ (show userActions)
-
-callUserAPI :: Game ()
-callUserAPI =  undefined
-
-data UserAPI = PlayerAPI (Method Player)
-             | GameStateAPI (Method GameState)
-             deriving (Show)
-
-data Method a = Method String (Game a)
-
-instance Show (Method a) where
-  show (Method s _) = s
-
-userActions ::[UserAPI]
-userActions = [ PlayerAPI (Method "addPlayer" addPlayer)
-              , GameStateAPI (Method "takeSpot" takeSpot)
-              ]
-
-addPlayer :: Game Player
-addPlayer = undefined
-
-takeSpot :: Game GameState
-takeSpot = undefined
+routeReq :: GameInteraction -> (Request, [Param]) -> GameInteraction
+routeReq c ("setBoardSize", ps) = setBoardSize ps c
+routeReq c ("addPlayer", ps)    = addPlayer ps c
+-- routeReq (Configure config state, _) val  = doConfig config val state
+routeReq c (r, _)               = requestNotFound c r
 
 
-type PlayerResult = (Player, Result)
+sanitize :: Request -> Request
+sanitize = T.unpack . T.strip . T.pack
 
-showResults :: [PlayerResult] -> String
-showResults = unlines . map showResult
+parseReqParams :: Request -> (Request, [Param])
+parseReqParams r = fromMaybe ("", []) (uncons . words $ r)
 
-showResult :: PlayerResult -> String
-showResult (p, Win) = (userName p) ++ " won!"
-showResult (p, Tie) = (userName p) ++ " tied."
-showResult (p, Lose) = (userName p) ++ " lost."
 
-winner :: [PlayerResult] -> Maybe Player
-winner rs = find (\(_, r) -> r == Win) rs >>= return . fst
+respond :: GameInteraction -> Response
+respond (_, s) = s
 
-data Result = Win | Lose | Tie
-  deriving (Eq, Show)
+startGame :: GameInteraction
+startGame = (Start, startMessage)
 
-data GameException =
-    DuplicatePlayer Player [Player]
-  | NotEnoughPlayers [Player]
-  | CoordinateOutOfBounds LatticeCoordinate Lattice
-  | CoordinateOccupied LatticeCoordinate Lattice Player Player
-  | InvalidDim Int
-  | MarkTooShort String
-  | NameTooShort UserName
-  | MarkTooLong String
-  deriving (Eq)
+startMessage :: Response
+startMessage = unlines $ [welcomeMessage, apiDescription, howToExit]
 
-instance Show GameException where
-  show (DuplicatePlayer p ps) =
-    "Player " ++ (userName p) ++ " is duplicated.\n"
-    ++ "Here are the current players in the game:\n"
-    ++ (show ps)
-  show (NotEnoughPlayers ps) =
-    "There are not enough players to play the game."
-    ++ "\nConsider adding players. Here are the "
-    ++ "current players:\n" ++ (show ps)
-  show (CoordinateOutOfBounds c l) =
-    "Coordinate entered is out of the bounds of the "
-    ++ "game: " ++ (show c) ++ ".\nChoose a "
-    ++ "coordinate within " ++ (showBounds l)
-  show (CoordinateOccupied c l owner attemptor) =
-    "Request by " ++ (userName attemptor)
-    ++ " to claim board spot " ++ (show $ toUserCoordinate (width l) c)
-    ++ " is not permitted.\nThis spot is already taken"
-    ++ " by " ++ (userName owner) ++ "."
-  show (InvalidDim d) =
-    "Unable to create board for dimension " ++ (show d)
-    ++ ".\nPick a dimension greater than 1."
-  show (MarkTooShort s) =
-    "Mark '" ++ s ++ "' is too short. Pick a mark exactly"
-    ++ " one character long."
-  show (NameTooShort u) =
-    "Name '" ++ u ++ "' is too short. Pick a name at least"
-    ++ " one letter long."
-  show (MarkTooLong m) =
-    "Mark '" ++ m ++ "' is too long. Pick a mark exactly"
-    ++ " one character long."
+requestNotFound :: GameInteraction -> Request -> GameInteraction
+requestNotFound (state, _) r = (state, "Request not found: " ++ r ++ ".")
 
-data GameConfig = GameConfig {
-    players :: [Player]
-  , dim :: Int
-} deriving (Eq, Show)
+data GameState = Start
+               | Ready Lattice [Player] GameState
+               -- | Turn Lattice Player GameState
+               -- | Done Lattice [PlayerResult] GameState
+-- data Config = BoardSize Int
+            -- | Players [Players]
 
-defaultConfig :: Int -> GameConfig
-defaultConfig dimension = GameConfig [] dimension
+-- doConfig :: Config -> Request -> GameState -> GameInteraction
+-- doConfig (BoardSize i) = configBoardSize i
+-- doConfig (Players ps) = configPlayers ps
 
+addPlayer :: [Param] -> GameInteraction -> GameInteraction
+addPlayer (p:_) (state, _) = configPlayers p state
+addPlayer s (state, _)     = (state, invalidParams ("addPlayer", s))
+
+configPlayers :: String -> GameState -> GameInteraction
+configPlayers newStr oldState =
+  let newPlayer   = readMaybe newStr :: Maybe (UserName, Mark)
+      currPlayers = getPlayers oldState
+      currMarks   = map mark currPlayers
+      l           = getLattice oldState
+      parseFailed = (oldState, parseFail newStr)
+      checkUserExists (u, m)
+                  = let p         = Person u m
+                        newState  = Ready l (p:currPlayers) oldState
+                    in if m `elem` currMarks
+                         then (oldState, duplicatePlayer (u, m))
+                         else (newState, successAddPlayer p)
+  in maybe parseFailed checkUserExists newPlayer
+
+duplicatePlayer :: (UserName, Mark) -> Response
+duplicatePlayer (u, m) = "Could not add player for username '" ++ u
+                         ++ "' with mark '" ++ (m:"'.")
+                         ++ "No two players in a game may use the same mark."
+
+successAddPlayer :: Player -> Response
+successAddPlayer p = "Successfully added player " ++ (userName p) ++ "."
+
+defaultSize :: Int
+defaultSize = 3
+
+getPlayers :: GameState -> [Player]
+getPlayers Start = default2Players
+getPlayers (Ready _ ps _) = ps
+
+getBoardSize :: GameState -> Int
+getBoardSize Start          = defaultSize
+getBoardSize (Ready l _ _)  = width l
+
+getLattice :: GameState -> Lattice
+getLattice Start          = newLattice $ getBoardSize Start
+getLattice (Ready l _ _)  = l
+
+setBoardSize :: [Param] -> GameInteraction -> GameInteraction
+-- setBoardSize (Turn, _) = (Prompt losehistory)
+setBoardSize (p:_) (state, _)  = configBoardSize p state
+setBoardSize s (state, _)      = (state, invalidParams ("setBoardSize", s))
+
+configBoardSize :: Param -> GameState -> GameInteraction
+configBoardSize newStr oldState =
+  let newSize = readMaybe newStr :: Maybe Int
+      parseFailed = (oldState, parseFail newStr)
+      ps = getPlayers oldState
+      checkDim i = if i < 1
+                      then (oldState, dimTooSmall i)
+                      else (Ready (newLattice i) ps oldState,
+                            successSizeChange i)
+  in maybe parseFailed checkDim newSize
+
+dimTooSmall :: Int -> Response
+dimTooSmall i = "Could not set board size to: " ++ (show i)
+                ++ ". The board size must be greater than 0."
+
+successSizeChange :: Int -> Response
+successSizeChange i = "Successfully set board size to " ++ (show i) ++ "."
+
+parseFail :: String -> Response
+parseFail s = "Could not parse input: " ++ s
+
+invalidParams :: (Request, [Param]) -> Response
+invalidParams (r, ps) = "Invalid parameters " ++ (show ps)
+                        ++ " for request " ++ r
+
+-- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+-- {-# LANGUAGE MultiParamTypeClasses #-}
+-- {-# LANGUAGE TypeOperators #-}
+--
+-- module Game
+--             ( Game
+--             , runGame
+--             , welcomeToT3
+--             , GameState(..)
+--             , GameConfig
+--             , LatticeCoordinate(..)
+--             , toVCoordinate
+--             , newGame
+--             , winner
+--             )
+--
+-- where
+--
+-- import Control.Monad.Except     (ExceptT, MonadError, runExceptT, throwError,
+--                                 catchError)
+-- import Control.Monad.IO.Class   (MonadIO, liftIO)
+-- import Control.Monad.Reader     (ReaderT, runReaderT)
+-- import Control.Monad.State      (StateT, runStateT)
+-- import Data.List                (find, intercalate, intersperse)
+-- -- import Data.Set                 (fromList)
+-- import qualified Data.Vector as V
+-- import System.IO                (IO)
+-- import Text.Read                (readMaybe)
+--
+--
+-- newtype Game a = G {
+--     runG :: ExceptT GameException (StateT GameState (ReaderT GameConfig IO)) a
+--   } deriving ( Functor, Applicative, Monad, MonadIO )
+--
+-- data GameState = Start Lattice
+--                | Turn Lattice Player
+--                | Done Lattice [PlayerResult]
+--
+-- runGame :: Game a -> IO (Either GameException a, GameState)
+-- runGame g =
+--   let config = defaultConfig
+--       state = newGame config
+--   in runReaderT (runStateT (runExceptT (runG g)) state) config
+--
+-- instance Show GameState where
+--   show (Start l)    = "Beginning of game.\n" ++ (prettyLattice l)
+--   show (Turn l p)   = "It's " ++ (userName p) ++ "'s turn.\n"
+--                       ++ (prettyLattice l)
+--   show (Done l rs)  = "Game over! " ++ (showResults rs)
+--                       ++ "\nThe final board:\n" ++ (prettyLattice l)
+--
+-- newGameState :: GameConfig -> GameState
+-- newGameState config = Start . newLattice $ dim config
+--
+-- newGame :: GameConfig -> Game a
+-- newGame config =
+--   let gameState = newGameState config
+--       reader =
+--   in
+--
+--
+-- takeSpot :: Game GameState
+-- takeSpot = undefined
+--
+--
+-- type PlayerResult = (Player, Result)
+--
+-- showResults :: [PlayerResult] -> String
+-- showResults = unlines . map showResult
+--
+-- showResult :: PlayerResult -> String
+-- showResult (p, Win) = (userName p) ++ " won!"
+-- showResult (p, Tie) = (userName p) ++ " tied."
+-- showResult (p, Lose) = (userName p) ++ " lost."
+--
+-- winner :: [PlayerResult] -> Maybe Player
+-- winner rs = find (\(_, r) -> r == Win) rs >>= return . fst
+--
+-- data Result = Win | Lose | Tie
+--   deriving (Eq, Show)
+--
+--
+--
+--
+-- data GameException =
+--     DuplicatePlayer Player [Player]
+--   | NotEnoughPlayers [Player]
+--   | CoordinateOutOfBounds LatticeCoordinate Lattice
+--   | CoordinateOccupied LatticeCoordinate Lattice Player Player
+--   | InvalidDim Int
+--   | MarkTooShort String
+--   | NameTooShort UserName
+--   | MarkTooLong String
+--   | APINotFound String
+--   | StringParseFailed String
+--   deriving (Eq)
+--
+-- instance Show GameException where
+--   show (DuplicatePlayer p ps) =
+--     "Player " ++ (userName p) ++ " is duplicated.\n"
+--     ++ "Here are the current players in the game:\n"
+--     ++ (show ps)
+--   show (NotEnoughPlayers ps) =
+--     "There are not enough players to play the game."
+--     ++ "\nConsider adding players. Here are the "
+--     ++ "current players:\n" ++ (show ps)
+--   show (CoordinateOutOfBounds c l) =
+--     "Coordinate entered is out of the bounds of the "
+--     ++ "game: " ++ (show c) ++ ".\nChoose a "
+--     ++ "coordinate within " ++ (showBounds l)
+--   show (CoordinateOccupied c l owner attemptor) =
+--     "Request by " ++ (userName attemptor)
+--     ++ " to claim board spot " ++ (show $ toUserCoordinate (width l) c)
+--     ++ " is not permitted.\nThis spot is already taken"
+--     ++ " by " ++ (userName owner) ++ "."
+--   show (InvalidDim d) =
+--     "Unable to create board for dimension " ++ (show d)
+--     ++ ".\nPick a dimension greater than 1."
+--   show (MarkTooShort s) =
+--     "Mark '" ++ s ++ "' is too short. Pick a mark exactly"
+--     ++ " one character long."
+--   show (NameTooShort u) =
+--     "Name '" ++ u ++ "' is too short. Pick a name at least"
+--     ++ " one letter long."
+--   show (MarkTooLong m) =
+--     "Mark '" ++ m ++ "' is too long. Pick a mark exactly"
+--     ++ " one character long."
+--   show (APINotFound s) =
+--     "Could not find action: " ++ s ++ "."
+--   show (StringParseFailed s) =
+--     "Could not parse input: " ++ s ++ "."
+--
+-- instance MonadError GameException Game where
+--   throwError = undefined
+--   catchError = undefined
+--
+--
+--
+-- -- | Configuration of the game that should remain stable
+-- -- if the game is in the 'Turn' or 'Done' 'GameState'.
+-- data GameConfig = GameConfig {
+--     players :: [Player]
+--   , dim :: Int
+-- } deriving (Eq, Show)
+--
+-- defaultConfig :: GameConfig
+-- defaultConfig = GameConfig default2Players defaultDimension
+--
+-- defaultDimension :: Int
+-- defaultDimension = 3
+--
+--
+-- | Coordinates of the board
 type VCoord = Int
 type UCoord = (Int, Int)
 
@@ -212,6 +341,9 @@ width l = let area = (fromIntegral . V.length . vec $ l) :: Double
 newLattice :: Int -> Lattice
 newLattice n = Lattice $ V.replicate (n ^ 2) Open
 
+
+
+
 -- | Populates the 'Lattice'.
 data Tac = Mark Player | Open
   deriving (Eq)
@@ -231,7 +363,13 @@ tacMark (Mark p) = mark p
 tacMark Open = emptyMark
 
 
--- data Strategy = RandomMove deriving (Eq, Show)
+default2Players :: [Player]
+default2Players = [ Person "Player 1" '1'
+                  , Person "Player 2" '2'
+                  ]
+
+-- -- data Strategy = RandomMove deriving (Eq, Show)
+--
 
 -- | A Tic Tac Toe player. Each player has a unique mark, which identifies their
 -- 'Move's on the 'Lattice'.
@@ -249,46 +387,108 @@ userName (Person u _) = u
 
 instance Eq Player where
   p1 == p2 = mark p1 == mark p2
+--
+--
+--
+-- welcomeToT3 :: IO GameConfig
+-- welcomeToT3 = putStrLn welcomeMessage >>
+--               configureWithRetry 3 pickBoardSize >>= \size ->
+--               configureWithRetry default2Players addPlayers >>= \ps ->
+--               putStrLn readyToGoMessage >>
+--               return (GameConfig ps size)
+--
+--
+welcomeMessage :: Response
+welcomeMessage = "Welcome to T3: Tic Tac Toe in Haskell!"
 
+apiDescription :: Response
+apiDescription =
+  intercalate "\n  " [ "The game supports the following commands:"
+                     , "setBoardSize <size>"
+                     , "addPlayer <(username, single-letter-mark)>"
+                     , "pickSpot <(column, row)>"
+                     , "showBoard"
+                     ]
 
-
-  -- newGame :: Int -> [(String, Char)] -> Game GameState
-  -- newGame dimension ps
-  --   | dimension < 1
-  --       = Left ("Invalid lattice size: " ++ (show dim)
-  --                       ++ ". Board must be at least size 1.")
-  --   | let marks  = map snd ps
-  --         sMarks = fromList marks
-  --     in length marks /= length sMarks
-  --       = Left ("Duplicated marks found. All players must have unique marks.")
-  --   | otherwise = let starters = map (\(n, m) -> Player n m) ps
-  --                     l = newLattice dim
-  --                     game = GameState Start starters l
-  --                 in Right $ GS $ put game
-
-
-  -- addPlayer :: Game Player
-  -- addPlayer = liftIO $ putStrLn "Would you like to add a Player?" >>
-  --             gets (map name . players) >>= \names ->
-  --             liftIO (putStrLn ("You currently have " ++ (show . length $ names)
-  --                       ++ "players: " ++ (show names))) >>
-  --             liftIO (putStrLn "To add a player, enter a player name: ") >>
-  --             liftIO getLine >>= \nm ->
-  --             if null nm
-  --               then throwError "The name must have at least one letter."
-  --               else return nm >>
-  --             liftIO $ putStrLn ("We also need a mark to represent the player"
-  --                       ++ "on the board. It should be 1 character long: ") >>
-  --             liftIO getLine >>= \mark ->
-  --             let trimmed@(x:xs) = T.unpack . T.strip . T.pack $ mark
-  --             in if null trimmed
-  --                  then throwError "The mark must not be blank."
-  --                  else if not (null xs)
-  --                    then throwError "The mark must be exactly 1 character."
-  --                    else return x >>= \mk ->
-  --             gets players >>= \ps ->
-  --             let p = Player nm mk
-  --             in if any (p ==) ps
-  --                  then throwError ("Player " ++ (show p) ++ " already exists.")
-  --                  else return (modify (\g -> g { players = (p:(players g)) })) >>
-  --             return p
+howToExit :: Response
+howToExit = "Press <Ctrl-D> to quit."
+--
+-- readyToGoMessage :: String
+-- readyToGoMessage = "Looks like the game is ready to start!"
+--
+-- -- actionMessage :: String
+-- -- actionMessage = "Type an action to get started.\n"
+--                 -- ++ "Here are the actions supported right now:\n"
+--                 -- ++ (show userAPINames)
+--
+-- -- userAPINames :: [String]
+-- -- userAPINames = ["takeSpot"]
+--
+-- configureWithRetry :: a -> IO (Either GameException a) -> IO a
+-- configureWithRetry defaultVal configure = undefined
+--
+-- retry :: IO Bool
+-- retry = putStrLn retryPrompt >>
+--         getLine >>= return . parseYNResponse
+--
+-- parseYNResponse :: String -> Bool
+-- parseYNResponse "y" = True
+-- parseYNResponse "Y" = True
+-- parseYNResponse _   = False
+--
+-- retryPrompt :: String
+-- retryPrompt = "Would you like to try again? \nEnter 'y' to try again or any "
+--               ++ "other key to continue with current settings and defaults."
+--
+-- pickBoardSize :: IO (Either GameException Int)
+-- pickBoardSize = putStrLn "Pick a board size greater than 0." >>
+--                 getLine >>= return . isValidBoardSize
+--
+-- isValidBoardSize :: String -> Either GameException Int
+-- isValidBoardSize s =
+--   let size = readMaybe s :: (Maybe Int)
+--       parseFail = Left (StringParseFailed s)
+--       checkDim i = if i < 1
+--                       then Left (InvalidDim i)
+--                       else Right i
+--   in maybe parseFail checkDim size
+--
+--
+-- addPlayers :: IO (Either GameException [Player])
+-- addPlayers = putStrLn "Now let's set up your players. " >>
+--              undefined
+--
+--
+-- addPlayer :: IO (Either GameException Player)
+-- addPlayer = putStrLn "Enter a username: " >>
+--             getLine >>= \s -> return (isValidUserName s) >>
+--             putStrLn ("Enter a mark to display on the board for user "
+--                      ++ s ++ ". It must be exactly one character long: ") >>
+--             getLine >>= \m -> return (isValidMark m s) >>
+--             return (Right (Person s (head m)))
+--
+--
+-- isValidUserName :: String -> Either GameException Bool
+-- isValidUserName (x:xs) = Right True
+-- isValidUserName s      = Left $ NameTooShort s
+--
+-- isValidMark :: String -> String -> Either GameException Bool
+-- isValidMark [] s      = Left $ MarkTooShort s
+-- isValidMark (m:[]) _  = Right True
+-- isValidMark m _       = Left $ MarkTooLong m
+--
+--
+--   -- newGame :: Int -> [(String, Char)] -> Game GameState
+--   -- newGame dimension ps
+--   --   | dimension < 1
+--   --       = Left ("Invalid lattice size: " ++ (show dim)
+--   --                       ++ ". Board must be at least size 1.")
+--   --   | let marks  = map snd ps
+--   --         sMarks = fromList marks
+--   --     in length marks /= length sMarks
+--   --       = Left ("Duplicated marks found. All players must have unique marks.")
+--
+--
+--   --             in if any (p ==) ps
+--   --                  then throwError ("Player " ++ (show p) ++ " already exists.")
+--   --                  else return (modify (\g -> g { players = (p:(players g)) })) >>
