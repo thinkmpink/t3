@@ -4,7 +4,7 @@ module Game
     , startGame
     ) where
 
-import Data.List                (intercalate, intersperse, uncons)
+import Data.List                (find, intercalate, intersperse, uncons)
 import Data.Maybe               (fromMaybe)
 import Text.Read                (readMaybe)
 import qualified Data.Text as T
@@ -179,39 +179,24 @@ invalidParams (r, ps) = "Invalid parameters " ++ (show ps)
 --   show (Done l rs)  = "Game over! " ++ (showResults rs)
 --                       ++ "\nThe final board:\n" ++ (prettyLattice l)
 --
--- newGameState :: GameConfig -> GameState
--- newGameState config = Start . newLattice $ dim config
---
--- newGame :: GameConfig -> Game a
--- newGame config =
---   let gameState = newGameState config
---       reader =
---   in
---
---
--- takeSpot :: Game GameState
--- takeSpot = undefined
---
---
--- type PlayerResult = (Player, Result)
---
--- showResults :: [PlayerResult] -> String
--- showResults = unlines . map showResult
---
--- showResult :: PlayerResult -> String
--- showResult (p, Win) = (userName p) ++ " won!"
--- showResult (p, Tie) = (userName p) ++ " tied."
--- showResult (p, Lose) = (userName p) ++ " lost."
---
--- winner :: [PlayerResult] -> Maybe Player
--- winner rs = find (\(_, r) -> r == Win) rs >>= return . fst
---
--- data Result = Win | Lose | Tie
---   deriving (Eq, Show)
---
---
---
---
+
+
+type PlayerResult = (Player, Result)
+
+showResults :: [PlayerResult] -> String
+showResults = unlines . map showResult
+
+showResult :: PlayerResult -> String
+showResult (p, Win) = (userName p) ++ " won!"
+showResult (p, Tie) = (userName p) ++ " tied."
+showResult (p, Lose) = (userName p) ++ " lost."
+
+winner :: [PlayerResult] -> Maybe Player
+winner rs = find (\(_, r) -> r == Win) rs >>= return . fst
+
+data Result = Win | Lose | Tie
+  deriving (Eq, Show)
+
 -- data GameException =
 --     DuplicatePlayer Player [Player]
 --   | NotEnoughPlayers [Player]
@@ -260,26 +245,8 @@ invalidParams (r, ps) = "Invalid parameters " ++ (show ps)
 --   show (StringParseFailed s) =
 --     "Could not parse input: " ++ s ++ "."
 --
--- instance MonadError GameException Game where
---   throwError = undefined
---   catchError = undefined
---
---
---
--- -- | Configuration of the game that should remain stable
--- -- if the game is in the 'Turn' or 'Done' 'GameState'.
--- data GameConfig = GameConfig {
---     players :: [Player]
---   , dim :: Int
--- } deriving (Eq, Show)
---
--- defaultConfig :: GameConfig
--- defaultConfig = GameConfig default2Players defaultDimension
---
--- defaultDimension :: Int
--- defaultDimension = 3
---
---
+
+
 -- | Coordinates of the board
 type VCoord = Int
 type UCoord = (Int, Int)
@@ -386,17 +353,8 @@ userName (Person u _) = u
 
 instance Eq Player where
   p1 == p2 = mark p1 == mark p2
---
---
---
--- welcomeToT3 :: IO GameConfig
--- welcomeToT3 = putStrLn welcomeMessage >>
---               configureWithRetry 3 pickBoardSize >>= \size ->
---               configureWithRetry default2Players addPlayers >>= \ps ->
---               putStrLn readyToGoMessage >>
---               return (GameConfig ps size)
---
---
+
+
 welcomeMessage :: Response
 welcomeMessage = "Welcome to T3: Tic Tac Toe in Haskell!"
 
@@ -411,83 +369,3 @@ apiDescription =
 
 howToExit :: Response
 howToExit = "Press <Ctrl-D> to quit."
---
--- readyToGoMessage :: String
--- readyToGoMessage = "Looks like the game is ready to start!"
---
--- -- actionMessage :: String
--- -- actionMessage = "Type an action to get started.\n"
---                 -- ++ "Here are the actions supported right now:\n"
---                 -- ++ (show userAPINames)
---
--- -- userAPINames :: [String]
--- -- userAPINames = ["takeSpot"]
---
--- configureWithRetry :: a -> IO (Either GameException a) -> IO a
--- configureWithRetry defaultVal configure = undefined
---
--- retry :: IO Bool
--- retry = putStrLn retryPrompt >>
---         getLine >>= return . parseYNResponse
---
--- parseYNResponse :: String -> Bool
--- parseYNResponse "y" = True
--- parseYNResponse "Y" = True
--- parseYNResponse _   = False
---
--- retryPrompt :: String
--- retryPrompt = "Would you like to try again? \nEnter 'y' to try again or any "
---               ++ "other key to continue with current settings and defaults."
---
--- pickBoardSize :: IO (Either GameException Int)
--- pickBoardSize = putStrLn "Pick a board size greater than 0." >>
---                 getLine >>= return . isValidBoardSize
---
--- isValidBoardSize :: String -> Either GameException Int
--- isValidBoardSize s =
---   let size = readMaybe s :: (Maybe Int)
---       parseFail = Left (StringParseFailed s)
---       checkDim i = if i < 1
---                       then Left (InvalidDim i)
---                       else Right i
---   in maybe parseFail checkDim size
---
---
--- addPlayers :: IO (Either GameException [Player])
--- addPlayers = putStrLn "Now let's set up your players. " >>
---              undefined
---
---
--- addPlayer :: IO (Either GameException Player)
--- addPlayer = putStrLn "Enter a username: " >>
---             getLine >>= \s -> return (isValidUserName s) >>
---             putStrLn ("Enter a mark to display on the board for user "
---                      ++ s ++ ". It must be exactly one character long: ") >>
---             getLine >>= \m -> return (isValidMark m s) >>
---             return (Right (Person s (head m)))
---
---
--- isValidUserName :: String -> Either GameException Bool
--- isValidUserName (x:xs) = Right True
--- isValidUserName s      = Left $ NameTooShort s
---
--- isValidMark :: String -> String -> Either GameException Bool
--- isValidMark [] s      = Left $ MarkTooShort s
--- isValidMark (m:[]) _  = Right True
--- isValidMark m _       = Left $ MarkTooLong m
---
---
---   -- newGame :: Int -> [(String, Char)] -> Game GameState
---   -- newGame dimension ps
---   --   | dimension < 1
---   --       = Left ("Invalid lattice size: " ++ (show dim)
---   --                       ++ ". Board must be at least size 1.")
---   --   | let marks  = map snd ps
---   --         sMarks = fromList marks
---   --     in length marks /= length sMarks
---   --       = Left ("Duplicated marks found. All players must have unique marks.")
---
---
---   --             in if any (p ==) ps
---   --                  then throwError ("Player " ++ (show p) ++ " already exists.")
---   --                  else return (modify (\g -> g { players = (p:(players g)) })) >>
