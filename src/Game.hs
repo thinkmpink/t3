@@ -11,11 +11,10 @@ import qualified Data.Text as T
 import qualified Data.Vector as V
 
 
-
 type Request = String
+type Param = String
 type Response = String
 type GameInteraction = (GameState, Response)
-type Param = String
 
 route :: GameInteraction -> Request -> GameInteraction
 route i r = routeReq i (parseReqParams . sanitize $ r)
@@ -24,7 +23,6 @@ routeReq :: GameInteraction -> (Request, [Param]) -> GameInteraction
 routeReq c ("setBoardSize", ps) = setBoardSize ps c
 routeReq c ("addPlayer", ps)    = addPlayer ps c
 routeReq c ("showBoard", ps)    = showBoard c
--- routeReq (Configure config state, _) val  = doConfig config val state
 routeReq c (r, _)               = requestNotFound c r
 
 
@@ -128,57 +126,6 @@ invalidParams :: (Request, [Param]) -> Response
 invalidParams (r, ps) = "Invalid parameters " ++ (show ps)
                         ++ " for request " ++ r
 
--- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
--- {-# LANGUAGE MultiParamTypeClasses #-}
--- {-# LANGUAGE TypeOperators #-}
---
--- module Game
---             ( Game
---             , runGame
---             , welcomeToT3
---             , GameState(..)
---             , GameConfig
---             , LatticeCoordinate(..)
---             , toVCoordinate
---             , newGame
---             , winner
---             )
---
--- where
---
--- import Control.Monad.Except     (ExceptT, MonadError, runExceptT, throwError,
---                                 catchError)
--- import Control.Monad.IO.Class   (MonadIO, liftIO)
--- import Control.Monad.Reader     (ReaderT, runReaderT)
--- import Control.Monad.State      (StateT, runStateT)
--- import Data.List                (find, intercalate, intersperse)
--- -- import Data.Set                 (fromList)
--- import qualified Data.Vector as V
--- import System.IO                (IO)
--- import Text.Read                (readMaybe)
---
---
--- newtype Game a = G {
---     runG :: ExceptT GameException (StateT GameState (ReaderT GameConfig IO)) a
---   } deriving ( Functor, Applicative, Monad, MonadIO )
---
--- data GameState = Start Lattice
---                | Turn Lattice Player
---                | Done Lattice [PlayerResult]
---
--- runGame :: Game a -> IO (Either GameException a, GameState)
--- runGame g =
---   let config = defaultConfig
---       state = newGame config
---   in runReaderT (runStateT (runExceptT (runG g)) state) config
---
--- instance Show GameState where
---   show (Start l)    = "Beginning of game.\n" ++ (prettyLattice l)
---   show (Turn l p)   = "It's " ++ (userName p) ++ "'s turn.\n"
---                       ++ (prettyLattice l)
---   show (Done l rs)  = "Game over! " ++ (showResults rs)
---                       ++ "\nThe final board:\n" ++ (prettyLattice l)
---
 
 
 type PlayerResult = (Player, Result)
@@ -196,56 +143,6 @@ winner rs = find (\(_, r) -> r == Win) rs >>= return . fst
 
 data Result = Win | Lose | Tie
   deriving (Eq, Show)
-
--- data GameException =
---     DuplicatePlayer Player [Player]
---   | NotEnoughPlayers [Player]
---   | CoordinateOutOfBounds LatticeCoordinate Lattice
---   | CoordinateOccupied LatticeCoordinate Lattice Player Player
---   | InvalidDim Int
---   | MarkTooShort String
---   | NameTooShort UserName
---   | MarkTooLong String
---   | APINotFound String
---   | StringParseFailed String
---   deriving (Eq)
---
--- instance Show GameException where
---   show (DuplicatePlayer p ps) =
---     "Player " ++ (userName p) ++ " is duplicated.\n"
---     ++ "Here are the current players in the game:\n"
---     ++ (show ps)
---   show (NotEnoughPlayers ps) =
---     "There are not enough players to play the game."
---     ++ "\nConsider adding players. Here are the "
---     ++ "current players:\n" ++ (show ps)
---   show (CoordinateOutOfBounds c l) =
---     "Coordinate entered is out of the bounds of the "
---     ++ "game: " ++ (show c) ++ ".\nChoose a "
---     ++ "coordinate within " ++ (showBounds l)
---   show (CoordinateOccupied c l owner attemptor) =
---     "Request by " ++ (userName attemptor)
---     ++ " to claim board spot " ++ (show $ toUserCoordinate (width l) c)
---     ++ " is not permitted.\nThis spot is already taken"
---     ++ " by " ++ (userName owner) ++ "."
---   show (InvalidDim d) =
---     "Unable to create board for dimension " ++ (show d)
---     ++ ".\nPick a dimension greater than 1."
---   show (MarkTooShort s) =
---     "Mark '" ++ s ++ "' is too short. Pick a mark exactly"
---     ++ " one character long."
---   show (NameTooShort u) =
---     "Name '" ++ u ++ "' is too short. Pick a name at least"
---     ++ " one letter long."
---   show (MarkTooLong m) =
---     "Mark '" ++ m ++ "' is too long. Pick a mark exactly"
---     ++ " one character long."
---   show (APINotFound s) =
---     "Could not find action: " ++ s ++ "."
---   show (StringParseFailed s) =
---     "Could not parse input: " ++ s ++ "."
---
-
 
 -- | Coordinates of the board
 type VCoord = Int
@@ -369,3 +266,104 @@ apiDescription =
 
 howToExit :: Response
 howToExit = "Press <Ctrl-D> to quit."
+
+
+-- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+-- {-# LANGUAGE MultiParamTypeClasses #-}
+-- {-# LANGUAGE TypeOperators #-}
+--
+-- module Game
+--             ( Game
+--             , runGame
+--             , welcomeToT3
+--             , GameState(..)
+--             , GameConfig
+--             , LatticeCoordinate(..)
+--             , toVCoordinate
+--             , newGame
+--             , winner
+--             )
+--
+-- where
+--
+-- import Control.Monad.Except     (ExceptT, MonadError, runExceptT, throwError,
+--                                 catchError)
+-- import Control.Monad.IO.Class   (MonadIO, liftIO)
+-- import Control.Monad.Reader     (ReaderT, runReaderT)
+-- import Control.Monad.State      (StateT, runStateT)
+-- import Data.List                (find, intercalate, intersperse)
+-- -- import Data.Set                 (fromList)
+-- import qualified Data.Vector as V
+-- import System.IO                (IO)
+-- import Text.Read                (readMaybe)
+--
+--
+-- newtype Game a = G {
+--     runG :: ExceptT GameException (StateT GameState (ReaderT GameConfig IO)) a
+--   } deriving ( Functor, Applicative, Monad, MonadIO )
+--
+-- data GameState = Start Lattice
+--                | Turn Lattice Player
+--                | Done Lattice [PlayerResult]
+--
+-- runGame :: Game a -> IO (Either GameException a, GameState)
+-- runGame g =
+--   let config = defaultConfig
+--       state = newGame config
+--   in runReaderT (runStateT (runExceptT (runG g)) state) config
+--
+-- instance Show GameState where
+--   show (Start l)    = "Beginning of game.\n" ++ (prettyLattice l)
+--   show (Turn l p)   = "It's " ++ (userName p) ++ "'s turn.\n"
+--                       ++ (prettyLattice l)
+--   show (Done l rs)  = "Game over! " ++ (showResults rs)
+--                       ++ "\nThe final board:\n" ++ (prettyLattice l)
+--
+-- data GameException =
+--     DuplicatePlayer Player [Player]
+--   | NotEnoughPlayers [Player]
+--   | CoordinateOutOfBounds LatticeCoordinate Lattice
+--   | CoordinateOccupied LatticeCoordinate Lattice Player Player
+--   | InvalidDim Int
+--   | MarkTooShort String
+--   | NameTooShort UserName
+--   | MarkTooLong String
+--   | APINotFound String
+--   | StringParseFailed String
+--   deriving (Eq)
+--
+-- instance Show GameException where
+--   show (DuplicatePlayer p ps) =
+--     "Player " ++ (userName p) ++ " is duplicated.\n"
+--     ++ "Here are the current players in the game:\n"
+--     ++ (show ps)
+--   show (NotEnoughPlayers ps) =
+--     "There are not enough players to play the game."
+--     ++ "\nConsider adding players. Here are the "
+--     ++ "current players:\n" ++ (show ps)
+--   show (CoordinateOutOfBounds c l) =
+--     "Coordinate entered is out of the bounds of the "
+--     ++ "game: " ++ (show c) ++ ".\nChoose a "
+--     ++ "coordinate within " ++ (showBounds l)
+--   show (CoordinateOccupied c l owner attemptor) =
+--     "Request by " ++ (userName attemptor)
+--     ++ " to claim board spot " ++ (show $ toUserCoordinate (width l) c)
+--     ++ " is not permitted.\nThis spot is already taken"
+--     ++ " by " ++ (userName owner) ++ "."
+--   show (InvalidDim d) =
+--     "Unable to create board for dimension " ++ (show d)
+--     ++ ".\nPick a dimension greater than 1."
+--   show (MarkTooShort s) =
+--     "Mark '" ++ s ++ "' is too short. Pick a mark exactly"
+--     ++ " one character long."
+--   show (NameTooShort u) =
+--     "Name '" ++ u ++ "' is too short. Pick a name at least"
+--     ++ " one letter long."
+--   show (MarkTooLong m) =
+--     "Mark '" ++ m ++ "' is too long. Pick a mark exactly"
+--     ++ " one character long."
+--   show (APINotFound s) =
+--     "Could not find action: " ++ s ++ "."
+--   show (StringParseFailed s) =
+--     "Could not parse input: " ++ s ++ "."
+--
