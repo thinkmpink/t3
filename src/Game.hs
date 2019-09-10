@@ -23,6 +23,7 @@ route i r = routeReq i (parseReqParams . sanitize $ r)
 routeReq :: GameInteraction -> (Request, [Param]) -> GameInteraction
 routeReq c ("setBoardSize", ps) = setBoardSize ps c
 routeReq c ("addPlayer", ps)    = addPlayer ps c
+routeReq c ("showBoard", ps)    = showBoard c
 -- routeReq (Configure config state, _) val  = doConfig config val state
 routeReq c (r, _)               = requestNotFound c r
 
@@ -50,12 +51,10 @@ data GameState = Start
                | Ready Lattice [Player] GameState
                -- | Turn Lattice Player GameState
                -- | Done Lattice [PlayerResult] GameState
--- data Config = BoardSize Int
-            -- | Players [Players]
 
--- doConfig :: Config -> Request -> GameState -> GameInteraction
--- doConfig (BoardSize i) = configBoardSize i
--- doConfig (Players ps) = configPlayers ps
+
+showBoard :: GameInteraction -> GameInteraction
+showBoard (state, _) = (state, prettyLattice (getLattice state))
 
 addPlayer :: [Param] -> GameInteraction -> GameInteraction
 addPlayer (p:_) (state, _) = configPlayers p state
