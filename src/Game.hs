@@ -4,9 +4,11 @@ module Game
     , startGame
     ) where
 
+import Control.Monad            (join)
 import Data.List                (find, intercalate, intersperse, uncons)
-import Data.Maybe               (fromMaybe)
+import Data.Maybe               (fromMaybe, fromJust)
 import Text.Read                (readMaybe)
+import Data.Monoid              ((<>))
 import qualified Data.Text as T
 import qualified Data.Vector as V
 
@@ -23,6 +25,7 @@ routeReq :: GameInteraction -> (Request, [Param]) -> GameInteraction
 routeReq c ("setBoardSize", ps) = setBoardSize ps c
 routeReq c ("addPlayer", ps)    = addPlayer ps c
 routeReq c ("showBoard", ps)    = showBoard c
+routeReq c ("pickSpot", ps)     = pickSpot ps c
 routeReq c (r, _)               = requestNotFound c r
 
 
@@ -46,9 +49,8 @@ requestNotFound :: GameInteraction -> Request -> GameInteraction
 requestNotFound (state, _) r = (state, "Request not found: " ++ r ++ ".")
 
 data GameState = Start
-               | Ready Lattice [Player] GameState
-               -- | Turn Lattice Player GameState
-               -- | Done Lattice [PlayerResult] GameState
+               | Turn Lattice [Player] GameState
+               | Done Lattice [PlayerResult] GameState
 
 
 showBoard :: GameInteraction -> GameInteraction
@@ -67,7 +69,7 @@ configPlayers newStr oldState =
       parseFailed = (oldState, parseFail newStr)
       checkUserExists (u, m)
                   = let p         = Person u m
-                        newState  = Ready l (p:currPlayers) oldState
+                        newState  = Turn l (p:currPlayers) oldState
                     in if m `elem` currMarks
                          then (oldState, duplicatePlayer (u, m))
                          else (newState, successAddPlayer p)
@@ -86,15 +88,18 @@ defaultSize = 3
 
 getPlayers :: GameState -> [Player]
 getPlayers Start = default2Players
-getPlayers (Ready _ ps _) = ps
+getPlayers (Turn _ ps _) = ps
 
 getBoardSize :: GameState -> Int
 getBoardSize Start          = defaultSize
-getBoardSize (Ready l _ _)  = width l
+getBoardSize (Turn l _ _)   = width l
 
 getLattice :: GameState -> Lattice
 getLattice Start          = newLattice $ getBoardSize Start
-getLattice (Ready l _ _)  = l
+getLattice (Turn l _ _)   = l
+
+rotate :: Int -> [a] -> [a]
+rotate = drop <> take
 
 setBoardSize :: [Param] -> GameInteraction -> GameInteraction
 -- setBoardSize (Turn, _) = (Prompt losehistory)
@@ -108,7 +113,7 @@ configBoardSize newStr oldState =
       ps = getPlayers oldState
       checkDim i = if i < 1
                       then (oldState, dimTooSmall i)
-                      else (Ready (newLattice i) ps oldState,
+                      else (Turn (newLattice i) ps oldState,
                             successSizeChange i)
   in maybe parseFailed checkDim newSize
 
@@ -127,22 +132,99 @@ invalidParams (r, ps) = "Invalid parameters " ++ (show ps)
                         ++ " for request " ++ r
 
 
+pickSpot :: [Param] -> GameInteraction -> GameInteraction
+pickSpot (p:_) (state, _) = let ucoord    = readMaybe p :: Maybe UCoord
+                                claim     = fmap UserCoordinate ucoord
+                                badParse = (state, parseFail p)
+                            in maybe badParse (claimSpot state) claim
+pickSpot ps (state, _)    = (state, invalidParams ("pickSpot", ps))
 
-type PlayerResult = (Player, Result)
+claimSpot :: GameState -> LatticeCoordinate -> GameInteraction
+claimSpot curr spot
+  | isDone curr            = alreadyDoneResponse curr
+  | isOutOfBounds spot l   = outOfBoundsResponse spot curr
+  | taker /= Nothing       = takenResponse (fromJust taker) spot curr
+  | isWinningMove p spot l = winsResponse        spot curr
+  | otherwise              = acceptClaimResponse spot curr
+  where l      = getLattice curr
+        taker  = getTaker spot l
+        p      = head . getPlayers $ curr
 
-showResults :: [PlayerResult] -> String
-showResults = unlines . map showResult
+isDone :: GameState -> Bool
+isDone (Done _ _ _) = True
+isDone _            = False
 
-showResult :: PlayerResult -> String
-showResult (p, Win) = (userName p) ++ " won!"
-showResult (p, Tie) = (userName p) ++ " tied."
-showResult (p, Lose) = (userName p) ++ " lost."
+alreadyDoneResponse :: GameState -> GameInteraction
+alreadyDoneResponse s = (s, "This game is over. No more moves are allowed.")
 
-winner :: [PlayerResult] -> Maybe Player
-winner rs = find (\(_, r) -> r == Win) rs >>= return . fst
 
-data Result = Win | Lose | Tie
-  deriving (Eq, Show)
+isOutOfBounds :: LatticeCoordinate -> Lattice -> Bool
+isOutOfBounds c l = let v   = toVCoordinate (width l) c
+                        len = length . vec $ l
+                    in 0 <= v && v <= len
+
+outOfBoundsResponse :: LatticeCoordinate
+                    -> GameState
+                    -> GameInteraction
+outOfBoundsResponse c g = (g, r)
+  where r = "Coordinate entered is out of the bounds of the game: "
+            ++ (show c) ++ ".\nChoose a coordinate within "
+            ++ (showBounds . getLattice $ g)
+
+getTaker :: LatticeCoordinate -> Lattice -> Maybe Player
+getTaker c l = join $ (vec l) V.!? (toVCoordinate (width l) c)
+
+takenResponse :: Player
+              -> LatticeCoordinate
+              -> GameState
+              -> GameInteraction
+takenResponse p c g = (g, r)
+  where r = "Request to claim board spot "
+            ++ (show $ toUserCoordinate (width . getLattice $ g) c)
+            ++ " is not permitted.\nThis spot is already taken  by "
+            ++ (userName p) ++ "."
+
+isWinningMove :: Player -> LatticeCoordinate -> Lattice -> Bool
+isWinningMove p c l =
+  let newLattice = addTac p c l
+      row        = ownsRow p c l
+      col        = ownsColumn p c l
+      ld         = ownsDescDiag p c l
+      rd         = ownsAscDiag p c l
+  in row || col || ld || rd
+
+winsResponse :: LatticeCoordinate
+             -> GameState
+             -> GameInteraction
+winsResponse = undefined
+
+acceptClaimResponse :: LatticeCoordinate
+                    -> GameState
+                    -> GameInteraction
+acceptClaimResponse = undefined
+
+      -- validate game state
+      -- validate claim
+      -- update lattice
+      -- compute successful move message
+      -- if state is terminal, add finished message
+
+
+
+-- data ClaimResponse = OutOfBounds LatticeCoordinate Lattice
+--                    | Taken Player LatticeCoordinate Lattice
+--                    | Available GameState LatticeCoordinate Lattice
+
+-- tryClaim :: Coordinate -> GameState -> ClaimResponse
+-- tryClaim c g
+--   | not $ isInBounds c l    = OutOfBounds c l
+--   | taken /= Nothing        = Taken (fromJust taken) c l
+--   | gameRoundup /= Nothing  = Available (fromJust gameRoundup) c l
+--   | otherwise               = Available (nextLattice)
+--   where l           = getLattice l
+--         taken       = checkTaken c l
+--         nextLattice = runClaim c l
+--         gameRoundup = roundup nextLattice
 
 -- | Coordinates of the board
 type VCoord = Int
@@ -178,9 +260,40 @@ showBounds l =
 -- ---------
 newtype Lattice = Lattice { vec :: V.Vector Tac } deriving (Eq, Show)
 
--- addTac :: Tac -> Coordinate -> Lattice -> Lattice
--- addTac tac coord lattice =
-  -- let i = toVCoordinate coord
+addTac :: Player -> LatticeCoordinate -> Lattice -> Lattice
+addTac p c l = let tac = Just p
+                   i   = toVCoordinate (width l) c
+               in Lattice $ (vec l) V.// [(i, tac)]
+
+owns :: Player -> Tac -> Bool
+owns p (Just q) = p == q
+owns _ Nothing = False
+
+ownsRow :: Player -> LatticeCoordinate -> Lattice -> Bool
+ownsRow p c l =
+  let w   = width l
+      i   = toVCoordinate w c
+      row = V.slice i w (vec l)
+  in V.all (owns p) row
+
+
+ownsColumn :: Player -> LatticeCoordinate -> Lattice -> Bool
+ownsColumn p c l =
+  let w   = width l
+      i   = toVCoordinate w c
+      col = V.ifilter (\ix _ -> ix `mod` w == i `mod` w) $ vec l
+  in V.all (owns p) col
+
+ownsDescDiag :: Player -> LatticeCoordinate -> Lattice -> Bool
+ownsDescDiag p c l =
+  let w   = width l
+      onDiag i _ = let (rx, cx) = toUserCoordinate w (VectorCoordinate i)
+                   in rx == cx
+      diag = V.ifilter onDiag $ vec l
+  in V.all (owns p) diag
+
+ownsAscDiag :: Player -> LatticeCoordinate -> Lattice -> Bool
+ownsAscDiag = undefined
 
 prettyLattice :: Lattice -> String
 prettyLattice lattice =
@@ -202,28 +315,20 @@ width l = let area = (fromIntegral . V.length . vec $ l) :: Double
           in (fromIntegral . round . sqrt $ area) :: Int
 
 newLattice :: Int -> Lattice
-newLattice n = Lattice $ V.replicate (n ^ 2) Open
-
-
+newLattice n = Lattice $ V.replicate (n ^ 2) Nothing
 
 
 -- | Populates the 'Lattice'.
-data Tac = Mark Player | Open
-  deriving (Eq)
-
-instance Show Tac where
-  show t = show . tacMark $ t
-
+type Tac = Maybe Player
 type Mark = Char
 type UserName = String
 
 emptyMark :: Mark
 emptyMark = ' '
 
--- | Gets the Mark at a 'Move' or ' '
+-- | Gets the Mark at a 'Tac' or ' '
 tacMark :: Tac -> Mark
-tacMark (Mark p) = mark p
-tacMark Open = emptyMark
+tacMark = maybe emptyMark mark
 
 
 default2Players :: [Player]
@@ -266,6 +371,26 @@ apiDescription =
 
 howToExit :: Response
 howToExit = "Press <Ctrl-D> to quit."
+
+
+
+
+type PlayerResult = (Player, Result)
+
+showResults :: [PlayerResult] -> String
+showResults = unlines . map showResult
+
+showResult :: PlayerResult -> String
+showResult (p, Win) = (userName p) ++ " won!"
+showResult (p, Tie) = (userName p) ++ " tied."
+showResult (p, Lose) = (userName p) ++ " lost."
+
+winner :: [PlayerResult] -> Maybe Player
+winner rs = find (\(_, r) -> r == Win) rs >>= return . fst
+
+data Result = Win | Lose | Tie
+  deriving (Eq, Show)
+
 
 
 -- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
