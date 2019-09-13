@@ -144,8 +144,8 @@ claimSpot curr spot
   | isDone curr            = alreadyDoneResponse curr
   | isOutOfBounds spot l   = outOfBoundsResponse spot curr
   | taker /= Nothing       = takenResponse (fromJust taker) spot curr
-  | isWinningMove p spot l = winsResponse        spot curr
-  | otherwise              = acceptClaimResponse spot curr
+  | isWinningMove p spot l = winsResponse p spot curr
+  | otherwise              = claimOkResponse p spot curr
   where l      = getLattice curr
         taker  = getTaker spot l
         p      = head . getPlayers $ curr
@@ -160,8 +160,8 @@ alreadyDoneResponse s = (s, "This game is over. No more moves are allowed.")
 
 isOutOfBounds :: LatticeCoordinate -> Lattice -> Bool
 isOutOfBounds c l = let v   = toVCoordinate (width l) c
-                        len = length . vec $ l
-                    in 0 <= v && v <= len
+                        len = V.length . vec $ l
+                    in 0 > v || v >= len
 
 outOfBoundsResponse :: LatticeCoordinate
                     -> GameState
@@ -186,23 +186,40 @@ takenResponse p c g = (g, r)
 
 isWinningMove :: Player -> LatticeCoordinate -> Lattice -> Bool
 isWinningMove p c l =
-  let newLattice = addTac p c l
-      row        = ownsRow p c l
-      col        = ownsColumn p c l
-      ld         = ownsDescDiag p c l
-      rd         = ownsAscDiag p c l
+  let new = addTac p c l
+      row = ownsRow p c new
+      col = ownsColumn p c new
+      ld  = ownsDescDiag p c new
+      rd  = ownsAscDiag p c new
   in row || col || ld || rd
 
-winsResponse :: LatticeCoordinate
+winsResponse :: Player
+             -> LatticeCoordinate
              -> GameState
              -> GameInteraction
-winsResponse = undefined
+winsResponse p c g =
+  let l       = getLattice g
+      ps      = getPlayers g
+      newL    = addTac p c l
+      results = playerResults p ps newL
+      newG    = Done newL results g
+      res     = unlines $ [ "Game over!"
+                          , showResults results
+                          , "Thanks for playing!"
+                          ]
+  in (newG, res)
 
-acceptClaimResponse :: LatticeCoordinate
-                    -> GameState
-                    -> GameInteraction
-acceptClaimResponse = undefined
 
+claimOkResponse :: Player
+                -> LatticeCoordinate
+                -> GameState
+                -> GameInteraction
+claimOkResponse p c g =
+  let newL = addTac p c (getLattice g)
+      newP = rotate 1 (getPlayers g)
+      newG = Turn newL newP g
+  in (newG, "Player " ++ (userName p) ++ " successfully moved to "
+            ++ (show $ toUserCoordinate (width newL) c) ++ ".")
       -- validate game state
       -- validate claim
       -- update lattice
@@ -286,14 +303,19 @@ ownsColumn p c l =
 
 ownsDescDiag :: Player -> LatticeCoordinate -> Lattice -> Bool
 ownsDescDiag p c l =
-  let w   = width l
-      onDiag i _ = let (rx, cx) = toUserCoordinate w (VectorCoordinate i)
-                   in rx == cx
-      diag = V.ifilter onDiag $ vec l
+  let w           = width l
+      onDiag i _  = let (rx, cx) = toUserCoordinate w (VectorCoordinate i)
+                    in rx == cx
+      diag        = V.ifilter onDiag $ vec l
   in V.all (owns p) diag
 
 ownsAscDiag :: Player -> LatticeCoordinate -> Lattice -> Bool
-ownsAscDiag = undefined
+ownsAscDiag p c l =
+  let w           = width l
+      onDiag i _  = let (rx, cx) = toUserCoordinate w (VectorCoordinate i)
+                    in rx + cx == w + 1
+      diag        = V.ifilter onDiag $ vec l
+  in V.all (owns p) diag
 
 prettyLattice :: Lattice -> String
 prettyLattice lattice =
@@ -381,14 +403,23 @@ showResults :: [PlayerResult] -> String
 showResults = unlines . map showResult
 
 showResult :: PlayerResult -> String
-showResult (p, Win) = (userName p) ++ " won!"
-showResult (p, Tie) = (userName p) ++ " tied."
-showResult (p, Lose) = (userName p) ++ " lost."
+showResult (p, Win)   = (userName p) ++ " won!"
+showResult (p, Lose)  = (userName p) ++ " lost."
 
 winner :: [PlayerResult] -> Maybe Player
 winner rs = find (\(_, r) -> r == Win) rs >>= return . fst
 
-data Result = Win | Lose | Tie
+playerResults :: Player
+              -> [Player]
+              -> Lattice
+              -> [PlayerResult]
+playerResults winner ps l = map result ps
+  where result p
+          | p == winner = (p, Win)
+          | otherwise   = (p, Lose)
+
+
+data Result = Win | Lose
   deriving (Eq, Show)
 
 
