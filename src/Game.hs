@@ -5,7 +5,7 @@ module Game
     ) where
 
 import Control.Monad            (join)
-import Data.List                (find, intercalate, intersperse, uncons)
+import Data.List                (intercalate, intersperse, uncons)
 import Data.Maybe               (fromMaybe, fromJust)
 import Text.Read                (readMaybe)
 import Data.Monoid              ((<>))
@@ -24,7 +24,7 @@ route i r = routeReq i (parseReqParams . sanitize $ r)
 routeReq :: GameInteraction -> (Request, [Param]) -> GameInteraction
 routeReq c ("setBoardSize", ps) = setBoardSize ps c
 routeReq c ("addPlayer", ps)    = addPlayer ps c
-routeReq c ("showBoard", ps)    = showBoard c
+routeReq c ("showBoard", _)    = showBoard c
 routeReq c ("pickSpot", ps)     = pickSpot ps c
 routeReq c (r, _)               = requestNotFound c r
 
@@ -89,14 +89,17 @@ defaultSize = 3
 getPlayers :: GameState -> [Player]
 getPlayers Start = default2Players
 getPlayers (Turn _ ps _) = ps
+getPlayers (Done _ rs _) = map fst rs
 
 getBoardSize :: GameState -> Int
 getBoardSize Start          = defaultSize
 getBoardSize (Turn l _ _)   = width l
+getBoardSize (Done l _ _)   = width l
 
 getLattice :: GameState -> Lattice
 getLattice Start          = newLattice $ getBoardSize Start
 getLattice (Turn l _ _)   = l
+getLattice (Done l _ _)   = l
 
 rotate :: Int -> [a] -> [a]
 rotate = drop <> take
@@ -189,8 +192,8 @@ isWinningMove p c l =
   let new = addTac p c l
       row = ownsRow p c new
       col = ownsColumn p c new
-      ld  = ownsDescDiag p c new
-      rd  = ownsAscDiag p c new
+      ld  = ownsDescDiag p new
+      rd  = ownsAscDiag p new
   in row || col || ld || rd
 
 winsResponse :: Player
@@ -201,7 +204,7 @@ winsResponse p c g =
   let l       = getLattice g
       ps      = getPlayers g
       newL    = addTac p c l
-      results = playerResults p ps newL
+      results = playerResults p ps
       newG    = Done newL results g
       res     = unlines $ [ "Game over!"
                           , showResults results
@@ -220,28 +223,6 @@ claimOkResponse p c g =
       newG = Turn newL newP g
   in (newG, "Player " ++ (userName p) ++ " successfully moved to "
             ++ (show $ toUserCoordinate (width newL) c) ++ ".")
-      -- validate game state
-      -- validate claim
-      -- update lattice
-      -- compute successful move message
-      -- if state is terminal, add finished message
-
-
-
--- data ClaimResponse = OutOfBounds LatticeCoordinate Lattice
---                    | Taken Player LatticeCoordinate Lattice
---                    | Available GameState LatticeCoordinate Lattice
-
--- tryClaim :: Coordinate -> GameState -> ClaimResponse
--- tryClaim c g
---   | not $ isInBounds c l    = OutOfBounds c l
---   | taken /= Nothing        = Taken (fromJust taken) c l
---   | gameRoundup /= Nothing  = Available (fromJust gameRoundup) c l
---   | otherwise               = Available (nextLattice)
---   where l           = getLattice l
---         taken       = checkTaken c l
---         nextLattice = runClaim c l
---         gameRoundup = roundup nextLattice
 
 -- | Coordinates of the board
 type VCoord = Int
@@ -288,8 +269,9 @@ owns _ Nothing = False
 
 ownsRow :: Player -> LatticeCoordinate -> Lattice -> Bool
 ownsRow p c l =
-  let w   = width l
-      i   = toVCoordinate w c
+  let w          = width l
+      firstInRow = UserCoordinate . (,) 1 . snd . toUserCoordinate w $ c
+      i          = toVCoordinate w firstInRow
       row = V.slice i w (vec l)
   in V.all (owns p) row
 
@@ -301,16 +283,16 @@ ownsColumn p c l =
       col = V.ifilter (\ix _ -> ix `mod` w == i `mod` w) $ vec l
   in V.all (owns p) col
 
-ownsDescDiag :: Player -> LatticeCoordinate -> Lattice -> Bool
-ownsDescDiag p c l =
+ownsDescDiag :: Player -> Lattice -> Bool
+ownsDescDiag p l =
   let w           = width l
       onDiag i _  = let (rx, cx) = toUserCoordinate w (VectorCoordinate i)
                     in rx == cx
       diag        = V.ifilter onDiag $ vec l
   in V.all (owns p) diag
 
-ownsAscDiag :: Player -> LatticeCoordinate -> Lattice -> Bool
-ownsAscDiag p c l =
+ownsAscDiag :: Player -> Lattice -> Bool
+ownsAscDiag p l =
   let w           = width l
       onDiag i _  = let (rx, cx) = toUserCoordinate w (VectorCoordinate i)
                     in rx + cx == w + 1
@@ -406,14 +388,10 @@ showResult :: PlayerResult -> String
 showResult (p, Win)   = (userName p) ++ " won!"
 showResult (p, Lose)  = (userName p) ++ " lost."
 
-winner :: [PlayerResult] -> Maybe Player
-winner rs = find (\(_, r) -> r == Win) rs >>= return . fst
-
 playerResults :: Player
               -> [Player]
-              -> Lattice
               -> [PlayerResult]
-playerResults winner ps l = map result ps
+playerResults winner ps = map result ps
   where result p
           | p == winner = (p, Win)
           | otherwise   = (p, Lose)
@@ -421,105 +399,3 @@ playerResults winner ps l = map result ps
 
 data Result = Win | Lose
   deriving (Eq, Show)
-
-
-
--- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
--- {-# LANGUAGE MultiParamTypeClasses #-}
--- {-# LANGUAGE TypeOperators #-}
---
--- module Game
---             ( Game
---             , runGame
---             , welcomeToT3
---             , GameState(..)
---             , GameConfig
---             , LatticeCoordinate(..)
---             , toVCoordinate
---             , newGame
---             , winner
---             )
---
--- where
---
--- import Control.Monad.Except     (ExceptT, MonadError, runExceptT, throwError,
---                                 catchError)
--- import Control.Monad.IO.Class   (MonadIO, liftIO)
--- import Control.Monad.Reader     (ReaderT, runReaderT)
--- import Control.Monad.State      (StateT, runStateT)
--- import Data.List                (find, intercalate, intersperse)
--- -- import Data.Set                 (fromList)
--- import qualified Data.Vector as V
--- import System.IO                (IO)
--- import Text.Read                (readMaybe)
---
---
--- newtype Game a = G {
---     runG :: ExceptT GameException (StateT GameState (ReaderT GameConfig IO)) a
---   } deriving ( Functor, Applicative, Monad, MonadIO )
---
--- data GameState = Start Lattice
---                | Turn Lattice Player
---                | Done Lattice [PlayerResult]
---
--- runGame :: Game a -> IO (Either GameException a, GameState)
--- runGame g =
---   let config = defaultConfig
---       state = newGame config
---   in runReaderT (runStateT (runExceptT (runG g)) state) config
---
--- instance Show GameState where
---   show (Start l)    = "Beginning of game.\n" ++ (prettyLattice l)
---   show (Turn l p)   = "It's " ++ (userName p) ++ "'s turn.\n"
---                       ++ (prettyLattice l)
---   show (Done l rs)  = "Game over! " ++ (showResults rs)
---                       ++ "\nThe final board:\n" ++ (prettyLattice l)
---
--- data GameException =
---     DuplicatePlayer Player [Player]
---   | NotEnoughPlayers [Player]
---   | CoordinateOutOfBounds LatticeCoordinate Lattice
---   | CoordinateOccupied LatticeCoordinate Lattice Player Player
---   | InvalidDim Int
---   | MarkTooShort String
---   | NameTooShort UserName
---   | MarkTooLong String
---   | APINotFound String
---   | StringParseFailed String
---   deriving (Eq)
---
--- instance Show GameException where
---   show (DuplicatePlayer p ps) =
---     "Player " ++ (userName p) ++ " is duplicated.\n"
---     ++ "Here are the current players in the game:\n"
---     ++ (show ps)
---   show (NotEnoughPlayers ps) =
---     "There are not enough players to play the game."
---     ++ "\nConsider adding players. Here are the "
---     ++ "current players:\n" ++ (show ps)
---   show (CoordinateOutOfBounds c l) =
---     "Coordinate entered is out of the bounds of the "
---     ++ "game: " ++ (show c) ++ ".\nChoose a "
---     ++ "coordinate within " ++ (showBounds l)
---   show (CoordinateOccupied c l owner attemptor) =
---     "Request by " ++ (userName attemptor)
---     ++ " to claim board spot " ++ (show $ toUserCoordinate (width l) c)
---     ++ " is not permitted.\nThis spot is already taken"
---     ++ " by " ++ (userName owner) ++ "."
---   show (InvalidDim d) =
---     "Unable to create board for dimension " ++ (show d)
---     ++ ".\nPick a dimension greater than 1."
---   show (MarkTooShort s) =
---     "Mark '" ++ s ++ "' is too short. Pick a mark exactly"
---     ++ " one character long."
---   show (NameTooShort u) =
---     "Name '" ++ u ++ "' is too short. Pick a name at least"
---     ++ " one letter long."
---   show (MarkTooLong m) =
---     "Mark '" ++ m ++ "' is too long. Pick a mark exactly"
---     ++ " one character long."
---   show (APINotFound s) =
---     "Could not find action: " ++ s ++ "."
---   show (StringParseFailed s) =
---     "Could not parse input: " ++ s ++ "."
---
