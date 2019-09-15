@@ -2,3 +2,4 @@
 t3.cabal
 *~
 *.lock
+.idea/
