@@ -347,8 +347,8 @@ apiDescription :: Response
 apiDescription =
   intercalate "\n  " [ "The game supports the following commands:"
                      , "setBoardSize <size>"
-                     , "addPlayer <(username, single-letter-mark)>"
-                     , "pickSpot <(column, row)>"
+                     , "addPlayer <(username,single-letter-mark)>"
+                     , "pickSpot <(column,row)>"
                      , "showBoard"
                      ]
 
