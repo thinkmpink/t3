@@ -90,10 +90,13 @@ configPlayers newStr oldState =
       currPlayers = getPlayers oldState
       currMarks   = map mark currPlayers
       l           = getLattice oldState
+      newL        = newLattice . width $ l
       parseFailed = (oldState, parseFail newStr)
       checkUserExists (u, m)
-                  = let p         = Person u m
-                        newState  = Turn l (p:currPlayers) oldState
+                  = let p        = Person u m
+                        newState = if currPlayers == default2Players
+                                     then Turn newL [p] oldState
+                                     else Turn l (p:currPlayers) oldState
                     in if m `elem` currMarks
                          then (oldState, duplicatePlayer (u, m))
                          else (newState, successAddPlayer p)
