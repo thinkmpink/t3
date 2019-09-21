@@ -21,10 +21,11 @@ description:         Please see the README on GitHub at <https://github.com/thin
 
 dependencies:
 - base >= 4.7 && < 5
-- containers >= 0.6
 - vector >= 0.12
-- mtl >= 2.2
 - text >= 1.2
+- pipes >= 4.0
+- transformers >= 0.5
+- optparse-applicative >= 0.14
 
 library:
   source-dirs: src
