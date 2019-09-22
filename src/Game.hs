@@ -8,6 +8,7 @@ module Game
     , respond
     , setBoardSize
     , showBoard
+    , showCommands
     , startGame
     ) where
 
@@ -48,6 +49,9 @@ data GameState = Start
 --   without modifying it.
 showBoard :: GameInteraction -> GameInteraction
 showBoard (state, _) = (state, prettyLattice (getLattice state))
+
+showCommands :: GameInteraction -> GameInteraction
+showCommands (st, _) = (st, apiDescription)
 
 -- | Validate a new 'Player' and add to the 'GameState'.
 addPlayer :: Player -> GameInteraction -> GameInteraction
@@ -300,10 +304,11 @@ welcomeMessage = "Welcome to T3: Tic Tac Toe in Haskell!"
 apiDescription :: Response
 apiDescription =
   intercalate "\n  " [ "The game supports the following commands:"
+                     , "addPlayer <username> <single-letter-mark>"
+                     , "pickSpot <column> <row>"
                      , "setBoardSize <size>"
-                     , "addPlayer <(username, single-letter-mark)>"
-                     , "pickSpot <(column, row)>"
                      , "showBoard"
+                     , "showCommands"
                      ]
 
 howToExit :: Response

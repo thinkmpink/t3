@@ -6,7 +6,7 @@ module GameCommand
 
 import Control.Applicative (liftA2)
 import Game (GameInteraction, GameState, Player(..), Response, addPlayer,
-            pickSpot, setBoardSize, showBoard)
+            pickSpot, setBoardSize, showBoard, showCommands)
 import Text.ParserCombinators.Parsec (GenParser, alphaNum, choice, count,
             digit, letter, many1, spaces, string, try, (<|>), (<?>))
 
@@ -18,17 +18,20 @@ type Row = Int
 type NumberOfMoves = Int
 
 data Command
-    = ShowBoard
-    | AddPlayer    Player
+    = AddPlayer    Player
     | SetBoardSize BoardSize
+    | ShowBoard
+    | ShowCommands
     | PickSpot     Column Row
     -- | Undo NumberOfMoves
+    -- | WhoseTurn
 
 -- | Run any command
 runCommand :: Command -> GameInteraction -> GameInteraction
 runCommand ShowBoard        = showBoard
 runCommand (AddPlayer p)    = addPlayer p
 runCommand (SetBoardSize b) = setBoardSize b
+runCommand ShowCommands     = showCommands
 runCommand (PickSpot c r)   = pickSpot c r
 
 cmd :: GenParser Char () Command
@@ -39,6 +42,7 @@ cmdAndArgs :: GenParser Char () Command
 cmdAndArgs = AddPlayer <$> pAddPlayer
          <|> PickSpot <$> (pPickSpot *> pCol) <*> pRow
          <|> try (ShowBoard <$ pShowBoard)
+         <|> try (ShowCommands <$ pShowCommands)
          <|> SetBoardSize <$> pSetBoardSize
          <?> "Available commands"
 
@@ -47,6 +51,9 @@ cmdName s = string s <* spaces
 
 pShowBoard :: GenParser Char () String
 pShowBoard = cmdName "showBoard"
+
+pShowCommands :: GenParser Char () String
+pShowCommands = cmdName "showCommands"
 
 pAddPlayer :: GenParser Char () Player
 pAddPlayer = Person <$> (cmdName "addPlayer" *> pUserName) <*> pMark
