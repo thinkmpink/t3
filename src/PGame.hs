@@ -1,13 +1,14 @@
 module PGame
-    ( cmd
+    ( Command
+    , cmd
     , runCommand
     ) where
 
 import Control.Applicative (liftA2)
 import Game (GameInteraction, GameState, Player(..), Response, addPlayer,
-            showBoard)
-import Text.ParserCombinators.Parsec (GenParser, alphaNum, count, letter,
-            many1, spaces, string, (<|>), (<?>))
+            setBoardSize, showBoard)
+import Text.ParserCombinators.Parsec (GenParser, alphaNum, choice, count,
+            digit, letter, many1, spaces, string, try, (<|>), (<?>))
 
 type BoardSize = Int
 type UserName = String
@@ -19,21 +20,23 @@ type NumberOfMoves = Int
 data Command
     = ShowBoard
     | AddPlayer Player
-    -- | SetBoardSize BoardSize
-    -- | Undo NumberOfMoves
+    | SetBoardSize BoardSize
     -- | PickSpot Column Row
+    -- | Undo NumberOfMoves
 
 runCommand :: Command -> GameInteraction -> GameInteraction
-runCommand ShowBoard      = showBoard
-runCommand (AddPlayer p)  = addPlayer p
+runCommand ShowBoard        = showBoard
+runCommand (AddPlayer p)    = addPlayer p
+runCommand (SetBoardSize b) = setBoardSize b
 
 cmd :: GenParser Char () Command
 cmd = spaces *> cmdAndArgs
             <?> "Command and any arguments"
 
 cmdAndArgs :: GenParser Char () Command
-cmdAndArgs = ShowBoard <$ pShowBoard
-         <|> AddPlayer <$> pAddPlayer
+cmdAndArgs = AddPlayer <$> pAddPlayer
+         <|> try (ShowBoard <$ pShowBoard)
+         <|> SetBoardSize <$> pSetBoardSize
          <?> "Available commands"
 
 cmdName :: String -> GenParser Char () String
@@ -50,6 +53,13 @@ pUserName = many1 alphaNum <* spaces
 
 pMark :: GenParser Char () Mark
 pMark = letter <* spaces
+
+pSetBoardSize :: GenParser Char () BoardSize
+pSetBoardSize = cmdName "setBoardSize" *> pBoardSize <* spaces
+
+pBoardSize :: GenParser Char () BoardSize
+pBoardSize = read <$> many1 digit
+
 -- data Tile a
 --   = Corner a (Tile a) (Tile a) (Tile a)
 --   | Leaf a

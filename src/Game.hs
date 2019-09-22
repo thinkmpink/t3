@@ -6,6 +6,7 @@ module Game
     , addPlayer
     , route
     , respond
+    , setBoardSize
     , showBoard
     , startGame
     ) where
@@ -22,6 +23,7 @@ import qualified Data.Vector as V
 -- | API layer type aliases.
 type Request = String
 type Param = String
+type BoardSize = Int
 type Response = String
 type GameInteraction = (GameState, Response)
 type PlayerResult = (Player, Result)
@@ -41,7 +43,6 @@ route :: GameInteraction -> Request -> GameInteraction
 route i r = routeReq i (parseReqParams . sanitize $ r)
 
 routeReq :: GameInteraction -> (Request, [Param]) -> GameInteraction
-routeReq c ("setBoardSize", ps) = setBoardSize ps c
 routeReq c ("pickSpot", ps)     = pickSpot ps c
 routeReq c (r, _)               = requestNotFound c r
 
@@ -118,21 +119,14 @@ getLattice (Done l _ _)   = l
 rotate :: Int -> [a] -> [a]
 rotate = drop <> take
 
-setBoardSize :: [Param] -> GameInteraction -> GameInteraction
--- setBoardSize (Turn, _) = (Prompt losehistory)
-setBoardSize (p:_) (state, _)  = configBoardSize p state
-setBoardSize s (state, _)      = (state, invalidParams ("setBoardSize", s))
 
-configBoardSize :: Param -> GameState -> GameInteraction
-configBoardSize newStr oldState =
-  let newSize     = readMaybe newStr :: Maybe Int
-      parseFailed = (oldState, parseFail newStr)
-      ps          = getPlayers oldState
-      checkDim i  = if i < 1
-                       then (oldState, dimTooSmall i)
-                       else (Turn (newLattice i) ps oldState,
-                             successSizeChange i)
-  in maybe parseFailed checkDim newSize
+setBoardSize :: BoardSize -> GameInteraction -> GameInteraction
+-- setBoardSize (Turn, _) = (Prompt losehistory)
+setBoardSize b (state, _) =
+  let ps = getPlayers state
+  in if b < 1
+       then (state, dimTooSmall b)
+       else (Turn (newLattice b) ps state, successSizeChange b)
 
 
 

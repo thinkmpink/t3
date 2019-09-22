@@ -1,32 +1,27 @@
 module Main where
 
 import Lib
-import Game                           (GameInteraction, respond, startGame)
-import PGame                          (runCommand, cmd)
-import Text.ParserCombinators.Parsec  (parse)
+import Game (GameInteraction, respond, startGame)
+import PGame (Command, runCommand, cmd)
+import Text.ParserCombinators.Parsec (ParseError, parse)
+import Pipes ((>->), runEffect)
+import qualified Pipes.Prelude as P
 
--- main :: IO ()
--- main = interact (unlines
---               . (map respond . scanl route startGame)
---               . lines)
 
 main :: IO ()
-main = do let g = startGame
-          putStrLn $ respond g
-          gameInteract g
-          return ()
+main = runEffect $ P.stdinLn
+               >-> P.takeWhile (/= "quit")
+               >-> P.map parseCmd
+               >-> P.scan reportOrRun startGame respond
+               >-> P.stdoutLn
 
 
-gameInteract :: GameInteraction -> IO GameInteraction
-gameInteract g = do
-    putStr "#: "
-    c <- getLine
-    case parse cmd "(stdin)" c of
-        Left e -> do
-            putStrLn "Error parsing input:"
-            print e
-            gameInteract g
-        Right command -> do
-            let newInteraction = runCommand command startGame
-            putStrLn $ respond newInteraction
-            gameInteract newInteraction
+parseCmd :: String -> Either ParseError Command
+parseCmd = parse cmd "(stdin)"
+
+
+reportOrRun :: GameInteraction
+            -> Either ParseError Command
+            -> GameInteraction
+reportOrRun (st, msg) (Left e)  = (st, "Error parsing input:" ++ (show e))
+reportOrRun g         (Right c) = runCommand c g
