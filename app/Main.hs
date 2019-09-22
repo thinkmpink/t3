@@ -2,7 +2,7 @@ module Main where
 
 import Lib
 import Game (GameInteraction, respond, startGame)
-import PGame (Command, runCommand, cmd)
+import GameCommand (Command, runCommand, cmd)
 import Text.ParserCombinators.Parsec (ParseError, parse)
 import Pipes ((>->), runEffect)
 import qualified Pipes.Prelude as P

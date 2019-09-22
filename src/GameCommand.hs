@@ -1,4 +1,4 @@
-module PGame
+module GameCommand
     ( Command
     , cmd
     , runCommand

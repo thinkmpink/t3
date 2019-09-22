@@ -14,14 +14,11 @@ module Game
 import Control.Monad            (join)
 import Data.List                (intercalate, intersperse)
 import Data.Maybe               (fromJust)
-import Text.Read                (readMaybe)
 import Data.Monoid              ((<>))
 import qualified Data.Vector as V
 
 
 -- | API layer type aliases.
-type Request          = String
-type Param            = String
 type Column           = Int
 type Row              = Int
 type BoardSize        = Int
@@ -339,12 +336,6 @@ dimTooSmall i = "Could not set board size to: " ++ (show i)
 successSizeChange :: Int -> Response
 successSizeChange i = "Successfully set board size to " ++ (show i) ++ "."
 
-parseFail :: String -> Response
-parseFail s = "Could not parse input: " ++ s
-
-invalidParams :: (Request, [Param]) -> Response
-invalidParams (r, ps) = "Invalid parameters " ++ (show ps)
-                        ++ " for request " ++ r
 
 takenResponse :: Player
               -> LatticeCoordinate
