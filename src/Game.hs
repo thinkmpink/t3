@@ -1,6 +1,12 @@
 module Game
-    ( route
+    ( GameInteraction
+    , GameState
+    , Player(..)
+    , Response
+    , addPlayer
+    , route
     , respond
+    , showBoard
     , startGame
     ) where
 
@@ -36,8 +42,6 @@ route i r = routeReq i (parseReqParams . sanitize $ r)
 
 routeReq :: GameInteraction -> (Request, [Param]) -> GameInteraction
 routeReq c ("setBoardSize", ps) = setBoardSize ps c
-routeReq c ("addPlayer", ps)    = addPlayer ps c
-routeReq c ("showBoard", _)     = showBoard c
 routeReq c ("pickSpot", ps)     = pickSpot ps c
 routeReq c (r, _)               = requestNotFound c r
 
@@ -63,44 +67,32 @@ requestNotFound (state, _) r = (state, "Request not found: " ++ r ++ ".")
 
 
 -- |  A 'GameState' evolves as the game progresses.
--- A 'GameInteraction' is just a thin layer around a 'GameState'.
+--    A 'GameInteraction' is just a thin layer around a 'GameState'.
 data GameState = Start
                | Turn Lattice [Player] GameState
                | Done Lattice [PlayerResult] GameState
 
 
 -- | Display the state of the 'GameInteraction' to the user
---  without modifying it.
+--   without modifying it.
 showBoard :: GameInteraction -> GameInteraction
 showBoard (state, _) = (state, prettyLattice (getLattice state))
 
--- | Track an additional player.
-addPlayer :: [Param] -> GameInteraction -> GameInteraction
-addPlayer (p:_) (state, _) = configPlayers p state
-addPlayer s (state, _)     = (state, invalidParams ("addPlayer", s))
-
 -- | Validate a new 'Player' and add to the 'GameState'.
---
--- Unfortunately, this implementation mixes parsing the input
--- with validating the resolved new 'Player' against the
--- set of players already in the game.
-configPlayers :: String -> GameState -> GameInteraction
-configPlayers newStr oldState =
-  let newPlayer   = readMaybe newStr :: Maybe (UserName, Mark)
+addPlayer :: Player -> GameInteraction -> GameInteraction
+addPlayer p (oldState, _) =
+  let (u, m)      = (userName p, mark p)
       currPlayers = getPlayers oldState
       currMarks   = map mark currPlayers
       l           = getLattice oldState
       newL        = newLattice . width $ l
-      parseFailed = (oldState, parseFail newStr)
-      checkUserExists (u, m)
-                  = let p        = Person u m
-                        newState = if currPlayers == default2Players
-                                     then Turn newL [p] oldState
-                                     else Turn l (p:currPlayers) oldState
-                    in if m `elem` currMarks
-                         then (oldState, duplicatePlayer (u, m))
-                         else (newState, successAddPlayer p)
-  in maybe parseFailed checkUserExists newPlayer
+      newState    = if currPlayers == default2Players
+                      then Turn newL [p] oldState
+                      else Turn l (p:currPlayers) oldState
+  in if m `elem` currMarks
+       then (oldState, duplicatePlayer (u, m))
+       else (newState, successAddPlayer p)
+
 
 -- | Default size of the classic Tic Tac Toe board.
 defaultSize :: Int

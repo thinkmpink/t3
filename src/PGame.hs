@@ -1,10 +1,13 @@
 module PGame
-    ( withParser
-    -- , run
+    ( cmd
+    , runCommand
     ) where
 
-import Options.Applicative (Parser, ParserInfo, info, helper, progDesc,
-                            argument, execParser)
+import Control.Applicative (liftA2)
+import Game (GameInteraction, GameState, Player(..), Response, addPlayer,
+            showBoard)
+import Text.ParserCombinators.Parsec (GenParser, alphaNum, count, letter,
+            many1, spaces, string, (<|>), (<?>))
 
 type BoardSize = Int
 type UserName = String
@@ -14,34 +17,43 @@ type Row = Int
 type NumberOfMoves = Int
 
 data Command
-    = SetBoardSize BoardSize
-    | AddPlayer UserName Mark
-    | ShowBoard
-    | Undo NumberOfMoves
-    | PickSpot Column Row
+    = ShowBoard
+    | AddPlayer Player
+    -- | SetBoardSize BoardSize
+    -- | Undo NumberOfMoves
+    -- | PickSpot Column Row
 
-data Options = Options Command
+runCommand :: Command -> GameInteraction -> GameInteraction
+runCommand ShowBoard      = showBoard
+runCommand (AddPlayer p)  = addPlayer p
 
-withParser = execParser
-  (parseOptions `withInfo` "Interact with the T3 Game API")
+cmd :: GenParser Char () Command
+cmd = spaces *> cmdAndArgs
+            <?> "Command and any arguments"
 
-parseOptions :: Parser Options
-parseOptions = undefined
+cmdAndArgs :: GenParser Char () Command
+cmdAndArgs = ShowBoard <$ pShowBoard
+         <|> AddPlayer <$> pAddPlayer
+         <?> "Available commands"
 
--- run :: Options -> IO (Game String)
--- run opts = undefined
+cmdName :: String -> GenParser Char () String
+cmdName s = string s <* spaces
 
-withInfo :: Parser a -> String -> ParserInfo a
-withInfo opts desc = info (helper <*> opts) $ progDesc desc
+pShowBoard :: GenParser Char () String
+pShowBoard = cmdName "showBoard"
 
--- parseSetBoardSize :: Parser Command
--- parseSetBoardSize = SetBoardSize
-    -- <$> argument
+pAddPlayer :: GenParser Char () Player
+pAddPlayer = Person <$> (cmdName "addPlayer" *> pUserName) <*> pMark
 
-data Tile a
-  = Corner a (Tile a) (Tile a) (Tile a)
-  | Leaf a
+pUserName :: GenParser Char () UserName
+pUserName = many1 alphaNum <* spaces
 
+pMark :: GenParser Char () Mark
+pMark = letter <* spaces
+-- data Tile a
+--   = Corner a (Tile a) (Tile a) (Tile a)
+--   | Leaf a
+--
 -- class AsChar a where
 --   asChar :: a -> Char
 --
