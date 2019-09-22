@@ -6,7 +6,7 @@ module PGame
 
 import Control.Applicative (liftA2)
 import Game (GameInteraction, GameState, Player(..), Response, addPlayer,
-            setBoardSize, showBoard)
+            pickSpot, setBoardSize, showBoard)
 import Text.ParserCombinators.Parsec (GenParser, alphaNum, choice, count,
             digit, letter, many1, spaces, string, try, (<|>), (<?>))
 
@@ -19,15 +19,17 @@ type NumberOfMoves = Int
 
 data Command
     = ShowBoard
-    | AddPlayer Player
+    | AddPlayer    Player
     | SetBoardSize BoardSize
-    -- | PickSpot Column Row
+    | PickSpot     Column Row
     -- | Undo NumberOfMoves
 
+-- | Run any command
 runCommand :: Command -> GameInteraction -> GameInteraction
 runCommand ShowBoard        = showBoard
 runCommand (AddPlayer p)    = addPlayer p
 runCommand (SetBoardSize b) = setBoardSize b
+runCommand (PickSpot c r)   = pickSpot c r
 
 cmd :: GenParser Char () Command
 cmd = spaces *> cmdAndArgs
@@ -35,6 +37,7 @@ cmd = spaces *> cmdAndArgs
 
 cmdAndArgs :: GenParser Char () Command
 cmdAndArgs = AddPlayer <$> pAddPlayer
+         <|> PickSpot <$> (pPickSpot *> pCol) <*> pRow
          <|> try (ShowBoard <$ pShowBoard)
          <|> SetBoardSize <$> pSetBoardSize
          <?> "Available commands"
@@ -58,8 +61,19 @@ pSetBoardSize :: GenParser Char () BoardSize
 pSetBoardSize = cmdName "setBoardSize" *> pBoardSize <* spaces
 
 pBoardSize :: GenParser Char () BoardSize
-pBoardSize = read <$> many1 digit
+pBoardSize = pInt
 
+pPickSpot :: GenParser Char () String
+pPickSpot = cmdName "pickSpot"
+
+pCol :: GenParser Char () Column
+pCol = pInt <* spaces
+
+pRow :: GenParser Char () Column
+pRow = pInt <* spaces
+
+pInt :: GenParser Char () Int
+pInt = read <$> many1 digit
 -- data Tile a
 --   = Corner a (Tile a) (Tile a) (Tile a)
 --   | Leaf a

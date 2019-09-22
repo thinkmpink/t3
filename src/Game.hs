@@ -4,7 +4,7 @@ module Game
     , Player(..)
     , Response
     , addPlayer
-    , route
+    , pickSpot
     , respond
     , setBoardSize
     , showBoard
@@ -12,46 +12,22 @@ module Game
     ) where
 
 import Control.Monad            (join)
-import Data.List                (intercalate, intersperse, uncons)
-import Data.Maybe               (fromMaybe, fromJust)
+import Data.List                (intercalate, intersperse)
+import Data.Maybe               (fromJust)
 import Text.Read                (readMaybe)
 import Data.Monoid              ((<>))
-import qualified Data.Text as T
 import qualified Data.Vector as V
 
 
 -- | API layer type aliases.
-type Request = String
-type Param = String
-type BoardSize = Int
-type Response = String
-type GameInteraction = (GameState, Response)
-type PlayerResult = (Player, Result)
-
-
--- | Route any request.
-
--- In the future this parsing should be handled by
--- some more structured parser, such as Optparse-Applicative,
--- but it's not yet implemented.
---
--- Moreover, we could replace any signature whose parameters
--- include a GameInteraction and replace it with a State
--- monad (or transformer), but this likewise is not yet
--- implemented.
-route :: GameInteraction -> Request -> GameInteraction
-route i r = routeReq i (parseReqParams . sanitize $ r)
-
-routeReq :: GameInteraction -> (Request, [Param]) -> GameInteraction
-routeReq c ("pickSpot", ps)     = pickSpot ps c
-routeReq c (r, _)               = requestNotFound c r
-
-sanitize :: Request -> Request
-sanitize = T.unpack . T.strip . T.pack
-
-parseReqParams :: Request -> (Request, [Param])
-parseReqParams r = fromMaybe ("", []) (uncons . words $ r)
-
+type Request          = String
+type Param            = String
+type Column           = Int
+type Row              = Int
+type BoardSize        = Int
+type Response         = String
+type GameInteraction  = (GameState, Response)
+type PlayerResult     = (Player, Result)
 
 -- | Unwrap the response from any game interaction.
 respond :: GameInteraction -> Response
@@ -62,9 +38,6 @@ startGame = (Start, startMessage)
 
 startMessage :: Response
 startMessage = unlines $ [welcomeMessage, apiDescription, howToExit]
-
-requestNotFound :: GameInteraction -> Request -> GameInteraction
-requestNotFound (state, _) r = (state, "Request not found: " ++ r ++ ".")
 
 
 -- |  A 'GameState' evolves as the game progresses.
@@ -131,25 +104,23 @@ setBoardSize b (state, _) =
 
 
 -- | Pick a spot on the board for the player whose turn it is.
--- Input is parsed, validated, and the game will enter a new,
--- possibly terminal, state.
-pickSpot :: [Param] -> GameInteraction -> GameInteraction
-pickSpot (p:_) (state, _) = let ucoord    = readMaybe p :: Maybe UCoord
-                                claim     = fmap UserCoordinate ucoord
-                                badParse = (state, parseFail p)
-                            in maybe badParse (claimSpot state) claim
-pickSpot ps (state, _)    = (state, invalidParams ("pickSpot", ps))
-
-claimSpot :: GameState -> LatticeCoordinate -> GameInteraction
-claimSpot curr spot
-  | isDone curr            = alreadyDoneResponse curr
-  | isOutOfBounds spot l   = outOfBoundsResponse spot curr
-  | taker /= Nothing       = takenResponse (fromJust taker) spot curr
-  | isWinningMove p spot l = winsResponse p spot curr
-  | otherwise              = claimOkResponse p spot curr
-  where l      = getLattice curr
+-- Input is validated, and the game will enter a possibly terminal new state.
+pickSpot :: Column
+         -> Row
+         -> GameInteraction
+         -> GameInteraction
+pickSpot c r (st, _)
+  | isDone st              = alreadyDoneResponse st
+  | isOutOfBounds spot l   = outOfBoundsResponse spot st
+  | taker /= Nothing       = takenResponse (fromJust taker) spot st
+  | isWinningMove p spot l = winsResponse p spot st
+  | otherwise              = claimOkResponse p spot st
+  where l      = getLattice st
         taker  = getTaker spot l
-        p      = head . getPlayers $ curr
+        p      = head . getPlayers $ st
+        spot   = UserCoordinate (c, r)
+
+
 
 isDone :: GameState -> Bool
 isDone (Done _ _ _) = True
