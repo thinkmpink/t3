@@ -1,7 +1,13 @@
 module Game
     ( GameInteraction
     , GameState
+    , BoardSize
+    , Column
+    , Row
     , Player(..)
+    , Mark
+    , UserName
+    , NumberOfMoves
     , Response
     , addPlayer
     , pickSpot
@@ -24,6 +30,7 @@ import qualified Data.Vector as V
 type Column           = Int
 type Row              = Int
 type BoardSize        = Int
+type NumberOfMoves    = Int
 type Response         = String
 type GameInteraction  = (GameState, Response)
 type PlayerResult     = (Player, Result)

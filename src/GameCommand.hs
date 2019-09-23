@@ -5,35 +5,28 @@ module GameCommand
     ) where
 
 import Control.Applicative (liftA2)
-import Game (GameInteraction, GameState, Player(..), Response, addPlayer,
-            pickSpot, setBoardSize, showBoard, showCommands, whoseTurn)
 import Text.ParserCombinators.Parsec (GenParser, alphaNum, choice, count,
             digit, letter, many1, spaces, string, try, (<|>), (<?>))
+import qualified Game as G
 
-type BoardSize = Int
-type UserName = String
-type Mark = Char
-type Column = Int
-type Row = Int
-type NumberOfMoves = Int
 
 data Command
-    = AddPlayer    Player
-    | SetBoardSize BoardSize
+    = AddPlayer    G.Player
+    | SetBoardSize G.BoardSize
     | ShowBoard
     | ShowCommands
-    | PickSpot     Column Row
-    -- | Undo NumberOfMoves
+    | PickSpot     G.Column G.Row
+    | Undo         G.NumberOfMoves
     | WhoseTurn
 
 -- | Run any command
-runCommand :: Command -> GameInteraction -> GameInteraction
-runCommand ShowBoard        = showBoard
-runCommand (AddPlayer p)    = addPlayer p
-runCommand (SetBoardSize b) = setBoardSize b
-runCommand ShowCommands     = showCommands
-runCommand (PickSpot c r)   = pickSpot c r
-runCommand WhoseTurn        = whoseTurn
+runCommand :: Command -> G.GameInteraction -> G.GameInteraction
+runCommand ShowBoard        = G.showBoard
+runCommand (AddPlayer p)    = G.addPlayer p
+runCommand (SetBoardSize b) = G.setBoardSize b
+runCommand ShowCommands     = G.showCommands
+runCommand (PickSpot c r)   = G.pickSpot c r
+runCommand WhoseTurn        = G.whoseTurn
 
 cmd :: GenParser Char () Command
 cmd = spaces *> cmdAndArgs
@@ -60,28 +53,28 @@ pShowCommands = cmdName "showCommands"
 pWhoseTurn :: GenParser Char () String
 pWhoseTurn = cmdName "whoseTurn"
 
-pAddPlayer :: GenParser Char () Player
-pAddPlayer = Person <$> (cmdName "addPlayer" *> pUserName) <*> pMark
+pAddPlayer :: GenParser Char () G.Player
+pAddPlayer = G.Person <$> (cmdName "addPlayer" *> pUserName) <*> pMark
 
-pUserName :: GenParser Char () UserName
+pUserName :: GenParser Char () G.UserName
 pUserName = many1 alphaNum <* spaces
 
-pMark :: GenParser Char () Mark
+pMark :: GenParser Char () G.Mark
 pMark = letter <* spaces
 
-pSetBoardSize :: GenParser Char () BoardSize
+pSetBoardSize :: GenParser Char () G.BoardSize
 pSetBoardSize = cmdName "setBoardSize" *> pBoardSize <* spaces
 
-pBoardSize :: GenParser Char () BoardSize
+pBoardSize :: GenParser Char () G.BoardSize
 pBoardSize = pInt
 
 pPickSpot :: GenParser Char () String
 pPickSpot = cmdName "pickSpot"
 
-pCol :: GenParser Char () Column
+pCol :: GenParser Char () G.Column
 pCol = pInt <* spaces
 
-pRow :: GenParser Char () Column
+pRow :: GenParser Char () G.Column
 pRow = pInt <* spaces
 
 pInt :: GenParser Char () Int
