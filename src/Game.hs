@@ -10,6 +10,7 @@ module Game
     , showBoard
     , showCommands
     , startGame
+    , whoseTurn
     ) where
 
 import Control.Monad            (join)
@@ -52,6 +53,9 @@ showBoard (state, _) = (state, prettyLattice (getLattice state))
 
 showCommands :: GameInteraction -> GameInteraction
 showCommands (st, _) = (st, apiDescription)
+
+whoseTurn :: GameInteraction -> GameInteraction
+whoseTurn (st, _) = (st, whoseTurnResponse st)
 
 -- | Validate a new 'Player' and add to the 'GameState'.
 addPlayer :: Player -> GameInteraction -> GameInteraction
@@ -309,6 +313,7 @@ apiDescription =
                      , "setBoardSize <size>"
                      , "showBoard"
                      , "showCommands"
+                     , "whoseTurn"
                      ]
 
 howToExit :: Response
@@ -354,6 +359,11 @@ takenResponse p c g = (g, r)
 
 alreadyDoneResponse :: GameState -> GameInteraction
 alreadyDoneResponse s = (s, "This game is over. No more moves are allowed.")
+
+whoseTurnResponse :: GameState -> Response
+whoseTurnResponse g
+ | isDone g   = snd . alreadyDoneResponse $ g
+ | otherwise  = "It's " ++ (userName . head . getPlayers $ g) ++ "'s turn."
 
 winsResponse :: Player
              -> LatticeCoordinate
