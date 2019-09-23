@@ -79,25 +79,3 @@ pRow = pInt <* spaces
 
 pInt :: GenParser Char () Int
 pInt = read <$> many1 digit
--- data Tile a
---   = Corner a (Tile a) (Tile a) (Tile a)
---   | Leaf a
---
--- class AsChar a where
---   asChar :: a -> Char
---
--- pretty :: AsChar a => Tile a -> Tile (String, String, String)
--- pretty (Leaf a)             = Leaf ("   |",
---                                     ' ':(asChar a):" |",
---                                     "___|")
---
--- pretty (Corner a t1 t2 t3)  = Corner $ ( "____"
---                                        , "| " ++ (asChar a :" ")
---                                        , "|   "
---                                        ) (pretty t1) (pretty t2) (pretty t3)
---
--- prettyPrint :: Tile (String, String, String) -> String
--- prettyPrint (Corner (t, m, b) t1 t2 t3) = t ++ (prettyPrint t1)
---                                         ++ m ++ (prettyPrint t2)
---                                         ++ b ++ (prettyPrint t3)
--- prettyPrint (Leaf (t, m, b)) =
