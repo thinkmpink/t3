@@ -16,6 +16,7 @@ module Game
     , showBoard
     , showCommands
     , startGame
+    , undo
     , whoseTurn
     ) where
 
@@ -58,11 +59,16 @@ data GameState = Start
 showBoard :: GameInteraction -> GameInteraction
 showBoard (state, _) = (state, prettyLattice (getLattice state))
 
+
+-- | Show all commands available to the user.
 showCommands :: GameInteraction -> GameInteraction
 showCommands (st, _) = (st, apiDescription)
 
+
+-- | Check whose turn it is.
 whoseTurn :: GameInteraction -> GameInteraction
 whoseTurn (st, _) = (st, whoseTurnResponse st)
+
 
 -- | Validate a new 'Player' and add to the 'GameState'.
 addPlayer :: Player -> GameInteraction -> GameInteraction
@@ -80,9 +86,53 @@ addPlayer p (oldState, _) =
        else (newState, successAddPlayer p)
 
 
+-- | Reset the board size to the specified width.
+-- Note that this is a "destructive" update and will start a fresh board.
+setBoardSize :: BoardSize -> GameInteraction -> GameInteraction
+-- setBoardSize (Turn, _) = (Prompt losehistory)
+setBoardSize b (state, _) =
+  let ps = getPlayers state
+  in if b < 1
+       then (state, dimTooSmall b)
+       else (Turn (newLattice b) ps state, successSizeChange b)
+
+
+-- | Pick a spot on the board for the player whose turn it is.
+-- Input is validated, and the game will enter a possibly terminal new state.
+pickSpot :: Column
+         -> Row
+         -> GameInteraction
+         -> GameInteraction
+pickSpot c r (st, _)
+  | isDone st              = alreadyDoneResponse st
+  | isOutOfBounds spot l   = outOfBoundsResponse spot st
+  | taker /= Nothing       = takenResponse (fromJust taker) spot st
+  | isWinningMove p spot l = winsResponse p spot st
+  | otherwise              = claimOkResponse p spot st
+  where l      = getLattice st
+        taker  = getTaker spot l
+        p      = head . getPlayers $ st
+        spot   = UserCoordinate (c, r)
+
+
+-- | Undo the past 'n' moves.
+undo :: NumberOfMoves -> GameInteraction -> GameInteraction
+undo n (st, _)
+  | n < 0      = (st, "No operations undone.")
+  | otherwise  = undo' st n ("Undid " ++ (show n) ++ " operations.")
+  where undo' state 0 msg = (state, msg)
+        undo' state m msg = undo' (getPrevState state) (m - 1) msg
+
+
+
 -- | Default size of the classic Tic Tac Toe board.
 defaultSize :: Int
 defaultSize = 3
+
+getPrevState :: GameState -> GameState
+getPrevState Start        = Start
+getPrevState (Turn _ _ s) = s
+getPrevState (Done _ _ s) = s
 
 getPlayers :: GameState -> [Player]
 getPlayers Start         = default2Players
@@ -103,35 +153,6 @@ getLattice (Done l _ _)   = l
 -- Use to manage whose turn it is.
 rotate :: Int -> [a] -> [a]
 rotate = drop <> take
-
-
-setBoardSize :: BoardSize -> GameInteraction -> GameInteraction
--- setBoardSize (Turn, _) = (Prompt losehistory)
-setBoardSize b (state, _) =
-  let ps = getPlayers state
-  in if b < 1
-       then (state, dimTooSmall b)
-       else (Turn (newLattice b) ps state, successSizeChange b)
-
-
-
--- | Pick a spot on the board for the player whose turn it is.
--- Input is validated, and the game will enter a possibly terminal new state.
-pickSpot :: Column
-         -> Row
-         -> GameInteraction
-         -> GameInteraction
-pickSpot c r (st, _)
-  | isDone st              = alreadyDoneResponse st
-  | isOutOfBounds spot l   = outOfBoundsResponse spot st
-  | taker /= Nothing       = takenResponse (fromJust taker) spot st
-  | isWinningMove p spot l = winsResponse p spot st
-  | otherwise              = claimOkResponse p spot st
-  where l      = getLattice st
-        taker  = getTaker spot l
-        p      = head . getPlayers $ st
-        spot   = UserCoordinate (c, r)
-
 
 
 isDone :: GameState -> Bool
@@ -320,11 +341,12 @@ apiDescription =
                      , "setBoardSize <size>"
                      , "showBoard"
                      , "showCommands"
+                     , "undo <number-of-operations>"
                      , "whoseTurn"
                      ]
 
 howToExit :: Response
-howToExit = "Press <Ctrl-D> to quit."
+howToExit = "Press <Ctrl-D> or type 'quit' to quit."
 
 showResult :: PlayerResult -> String
 showResult (p, Win)   = (userName p) ++ " won!"

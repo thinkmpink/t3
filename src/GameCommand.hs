@@ -26,6 +26,7 @@ runCommand (AddPlayer p)    = G.addPlayer p
 runCommand (SetBoardSize b) = G.setBoardSize b
 runCommand ShowCommands     = G.showCommands
 runCommand (PickSpot c r)   = G.pickSpot c r
+runCommand (Undo n)         = G.undo n
 runCommand WhoseTurn        = G.whoseTurn
 
 cmd :: GenParser Char () Command
@@ -38,6 +39,7 @@ cmdAndArgs = AddPlayer <$> pAddPlayer
          <|> try (ShowBoard <$ pShowBoard)
          <|> try (ShowCommands <$ pShowCommands)
          <|> SetBoardSize <$> pSetBoardSize
+         <|> Undo <$> (pUndo *> pNumMoves)
          <|> WhoseTurn <$ pWhoseTurn
          <?> "Available commands"
 
@@ -49,6 +51,9 @@ pShowBoard = cmdName "showBoard"
 
 pShowCommands :: GenParser Char () String
 pShowCommands = cmdName "showCommands"
+
+pUndo :: GenParser Char () String
+pUndo = cmdName "undo"
 
 pWhoseTurn :: GenParser Char () String
 pWhoseTurn = cmdName "whoseTurn"
@@ -76,6 +81,9 @@ pCol = pInt <* spaces
 
 pRow :: GenParser Char () G.Column
 pRow = pInt <* spaces
+
+pNumMoves :: GenParser Char () G.NumberOfMoves
+pNumMoves = pInt <* spaces
 
 pInt :: GenParser Char () Int
 pInt = read <$> many1 digit
