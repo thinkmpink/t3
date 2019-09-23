@@ -22,7 +22,8 @@ description:         Please see the README on GitHub at <https://github.com/thin
 dependencies:
 - base >= 4.7 && < 5
 - vector >= 0.12
-- text >= 1.2
+- parsec >= 3.1
+- pipes >= 4.3
 
 library:
   source-dirs: src

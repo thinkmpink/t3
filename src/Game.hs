@@ -1,52 +1,40 @@
 module Game
-    ( route
+    ( GameInteraction
+    , GameState
+    , BoardSize
+    , Column
+    , Row
+    , Player(..)
+    , Mark
+    , UserName
+    , NumberOfMoves
+    , Response
+    , addPlayer
+    , pickSpot
     , respond
+    , setBoardSize
+    , showBoard
+    , showCommands
     , startGame
+    , undo
+    , whoseTurn
     ) where
 
 import Control.Monad            (join)
-import Data.List                (intercalate, intersperse, uncons)
-import Data.Maybe               (fromMaybe, fromJust)
-import Text.Read                (readMaybe)
+import Data.List                (intercalate, intersperse)
+import Data.Maybe               (fromJust)
 import Data.Monoid              ((<>))
-import qualified Data.Text as T
 import qualified Data.Vector as V
 
 
 -- | API layer type aliases.
-type Request = String
-type Param = String
-type Response = String
-type GameInteraction = (GameState, Response)
-type PlayerResult = (Player, Result)
-
-
--- | Route any request.
-
--- In the future this parsing should be handled by
--- some more structured parser, such as Optparse-Applicative,
--- but it's not yet implemented.
---
--- Moreover, we could replace any signature whose parameters
--- include a GameInteraction and replace it with a State
--- monad (or transformer), but this likewise is not yet
--- implemented.
-route :: GameInteraction -> Request -> GameInteraction
-route i r = routeReq i (parseReqParams . sanitize $ r)
-
-routeReq :: GameInteraction -> (Request, [Param]) -> GameInteraction
-routeReq c ("setBoardSize", ps) = setBoardSize ps c
-routeReq c ("addPlayer", ps)    = addPlayer ps c
-routeReq c ("showBoard", _)     = showBoard c
-routeReq c ("pickSpot", ps)     = pickSpot ps c
-routeReq c (r, _)               = requestNotFound c r
-
-sanitize :: Request -> Request
-sanitize = T.unpack . T.strip . T.pack
-
-parseReqParams :: Request -> (Request, [Param])
-parseReqParams r = fromMaybe ("", []) (uncons . words $ r)
-
+type Column           = Int
+type Row              = Int
+type BoardSize        = Int
+type NumberOfMoves    = Int
+type Response         = String
+type GameInteraction  = (GameState, Response)
+type PlayerResult     = (Player, Result)
 
 -- | Unwrap the response from any game interaction.
 respond :: GameInteraction -> Response
@@ -58,53 +46,93 @@ startGame = (Start, startMessage)
 startMessage :: Response
 startMessage = unlines $ [welcomeMessage, apiDescription, howToExit]
 
-requestNotFound :: GameInteraction -> Request -> GameInteraction
-requestNotFound (state, _) r = (state, "Request not found: " ++ r ++ ".")
-
 
 -- |  A 'GameState' evolves as the game progresses.
--- A 'GameInteraction' is just a thin layer around a 'GameState'.
+--    A 'GameInteraction' is just a thin layer around a 'GameState'.
 data GameState = Start
                | Turn Lattice [Player] GameState
                | Done Lattice [PlayerResult] GameState
 
 
 -- | Display the state of the 'GameInteraction' to the user
---  without modifying it.
+--   without modifying it.
 showBoard :: GameInteraction -> GameInteraction
 showBoard (state, _) = (state, prettyLattice (getLattice state))
 
--- | Track an additional player.
-addPlayer :: [Param] -> GameInteraction -> GameInteraction
-addPlayer (p:_) (state, _) = configPlayers p state
-addPlayer s (state, _)     = (state, invalidParams ("addPlayer", s))
+
+-- | Show all commands available to the user.
+showCommands :: GameInteraction -> GameInteraction
+showCommands (st, _) = (st, apiDescription)
+
+
+-- | Check whose turn it is.
+whoseTurn :: GameInteraction -> GameInteraction
+whoseTurn (st, _) = (st, whoseTurnResponse st)
+
 
 -- | Validate a new 'Player' and add to the 'GameState'.
---
--- Unfortunately, this implementation mixes parsing the input
--- with validating the resolved new 'Player' against the
--- set of players already in the game.
-configPlayers :: String -> GameState -> GameInteraction
-configPlayers newStr oldState =
-  let newPlayer   = readMaybe newStr :: Maybe (UserName, Mark)
+addPlayer :: Player -> GameInteraction -> GameInteraction
+addPlayer p (oldState, _) =
+  let (u, m)      = (userName p, mark p)
       currPlayers = getPlayers oldState
       currMarks   = map mark currPlayers
       l           = getLattice oldState
       newL        = newLattice . width $ l
-      parseFailed = (oldState, parseFail newStr)
-      checkUserExists (u, m)
-                  = let p        = Person u m
-                        newState = if currPlayers == default2Players
-                                     then Turn newL [p] oldState
-                                     else Turn l (p:currPlayers) oldState
-                    in if m `elem` currMarks
-                         then (oldState, duplicatePlayer (u, m))
-                         else (newState, successAddPlayer p)
-  in maybe parseFailed checkUserExists newPlayer
+      newState    = if currPlayers == default2Players
+                      then Turn newL [p] oldState
+                      else Turn l (p:currPlayers) oldState
+  in if m `elem` currMarks
+       then (oldState, duplicatePlayer (u, m))
+       else (newState, successAddPlayer p)
+
+
+-- | Reset the board size to the specified width.
+-- Note that this is a "destructive" update and will start a fresh board.
+setBoardSize :: BoardSize -> GameInteraction -> GameInteraction
+-- setBoardSize (Turn, _) = (Prompt losehistory)
+setBoardSize b (state, _) =
+  let ps = getPlayers state
+  in if b < 1
+       then (state, dimTooSmall b)
+       else (Turn (newLattice b) ps state, successSizeChange b)
+
+
+-- | Pick a spot on the board for the player whose turn it is.
+-- Input is validated, and the game will enter a possibly terminal new state.
+pickSpot :: Column
+         -> Row
+         -> GameInteraction
+         -> GameInteraction
+pickSpot c r (st, _)
+  | isDone st              = alreadyDoneResponse st
+  | isOutOfBounds spot l   = outOfBoundsResponse spot st
+  | taker /= Nothing       = takenResponse (fromJust taker) spot st
+  | isWinningMove p spot l = winsResponse p spot st
+  | otherwise              = claimOkResponse p spot st
+  where l      = getLattice st
+        taker  = getTaker spot l
+        p      = head . getPlayers $ st
+        spot   = UserCoordinate (c, r)
+
+
+-- | Undo the past 'n' moves.
+undo :: NumberOfMoves -> GameInteraction -> GameInteraction
+undo n (st, _)
+  | n < 0      = (st, "No operations undone.")
+  | otherwise  = undo' st n ("Undid " ++ (show n) ++ " operations.")
+  where undo' state 0 msg = (state, msg)
+        undo' state m msg = undo' (getPrevState state) (m - 1) msg
+
+
 
 -- | Default size of the classic Tic Tac Toe board.
 defaultSize :: Int
 defaultSize = 3
+
+getPrevState :: GameState -> GameState
+getPrevState Start        = Start
+getPrevState (Turn _ _ s) = s
+getPrevState (Done _ _ s) = s
 
 getPlayers :: GameState -> [Player]
 getPlayers Start         = default2Players
@@ -126,44 +154,6 @@ getLattice (Done l _ _)   = l
 rotate :: Int -> [a] -> [a]
 rotate = drop <> take
 
-setBoardSize :: [Param] -> GameInteraction -> GameInteraction
--- setBoardSize (Turn, _) = (Prompt losehistory)
-setBoardSize (p:_) (state, _)  = configBoardSize p state
-setBoardSize s (state, _)      = (state, invalidParams ("setBoardSize", s))
-
-configBoardSize :: Param -> GameState -> GameInteraction
-configBoardSize newStr oldState =
-  let newSize     = readMaybe newStr :: Maybe Int
-      parseFailed = (oldState, parseFail newStr)
-      ps          = getPlayers oldState
-      checkDim i  = if i < 1
-                       then (oldState, dimTooSmall i)
-                       else (Turn (newLattice i) ps oldState,
-                             successSizeChange i)
-  in maybe parseFailed checkDim newSize
-
-
-
--- | Pick a spot on the board for the player whose turn it is.
--- Input is parsed, validated, and the game will enter a new,
--- possibly terminal, state.
-pickSpot :: [Param] -> GameInteraction -> GameInteraction
-pickSpot (p:_) (state, _) = let ucoord    = readMaybe p :: Maybe UCoord
-                                claim     = fmap UserCoordinate ucoord
-                                badParse = (state, parseFail p)
-                            in maybe badParse (claimSpot state) claim
-pickSpot ps (state, _)    = (state, invalidParams ("pickSpot", ps))
-
-claimSpot :: GameState -> LatticeCoordinate -> GameInteraction
-claimSpot curr spot
-  | isDone curr            = alreadyDoneResponse curr
-  | isOutOfBounds spot l   = outOfBoundsResponse spot curr
-  | taker /= Nothing       = takenResponse (fromJust taker) spot curr
-  | isWinningMove p spot l = winsResponse p spot curr
-  | otherwise              = claimOkResponse p spot curr
-  where l      = getLattice curr
-        taker  = getTaker spot l
-        p      = head . getPlayers $ curr
 
 isDone :: GameState -> Bool
 isDone (Done _ _ _) = True
@@ -346,14 +336,17 @@ welcomeMessage = "Welcome to T3: Tic Tac Toe in Haskell!"
 apiDescription :: Response
 apiDescription =
   intercalate "\n  " [ "The game supports the following commands:"
+                     , "addPlayer <username> <single-letter-mark>"
+                     , "pickSpot <column> <row>"
                      , "setBoardSize <size>"
-                     , "addPlayer <(username,single-letter-mark)>"
-                     , "pickSpot <(column,row)>"
                      , "showBoard"
+                     , "showCommands"
+                     , "undo <number-of-operations>"
+                     , "whoseTurn"
                      ]
 
 howToExit :: Response
-howToExit = "Press <Ctrl-D> to quit."
+howToExit = "Press <Ctrl-D> or type 'quit' to quit."
 
 showResult :: PlayerResult -> String
 showResult (p, Win)   = (userName p) ++ " won!"
@@ -382,12 +375,6 @@ dimTooSmall i = "Could not set board size to: " ++ (show i)
 successSizeChange :: Int -> Response
 successSizeChange i = "Successfully set board size to " ++ (show i) ++ "."
 
-parseFail :: String -> Response
-parseFail s = "Could not parse input: " ++ s
-
-invalidParams :: (Request, [Param]) -> Response
-invalidParams (r, ps) = "Invalid parameters " ++ (show ps)
-                        ++ " for request " ++ r
 
 takenResponse :: Player
               -> LatticeCoordinate
@@ -401,6 +388,11 @@ takenResponse p c g = (g, r)
 
 alreadyDoneResponse :: GameState -> GameInteraction
 alreadyDoneResponse s = (s, "This game is over. No more moves are allowed.")
+
+whoseTurnResponse :: GameState -> Response
+whoseTurnResponse g
+ | isDone g   = snd . alreadyDoneResponse $ g
+ | otherwise  = "It's " ++ (userName . head . getPlayers $ g) ++ "'s turn."
 
 winsResponse :: Player
              -> LatticeCoordinate
