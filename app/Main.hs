@@ -23,5 +23,5 @@ parseCmd = parse cmd "(stdin)"
 reportOrRun :: GameInteraction
             -> Either ParseError Command
             -> GameInteraction
-reportOrRun (st, msg) (Left e)  = (st, "Error parsing input:" ++ (show e))
+reportOrRun (st, msg) (Left e)  = (st, "Error parsing input:\n" ++ (show e))
 reportOrRun g         (Right c) = runCommand c g
